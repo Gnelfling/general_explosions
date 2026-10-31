@@ -59,7 +59,7 @@ float4 main(PS_INPUT input) : COLOR0
 
         float t = near_t + (i + 0.5) * delta;
         float3 uvw = saturate(camera + direction * t);
-        float4 voxel = tex3D(BASETEXTURE, uvw);
+        float4 voxel = tex3Dlod(BASETEXTURE, float4(uvw, 0.0));
 
         float density = max(0.0, voxel.r * C2.x);
         float flame = max(0.0, voxel.g * C2.y);
@@ -69,7 +69,7 @@ float4 main(PS_INPUT input) : COLOR0
         // Cheap directional attenuation via a short look-ahead into the
         // volume. This is single-scattering-inspired, not full path tracing.
         float3 probe = saturate(uvw + sun_direction * 0.07);
-        float ahead = tex3D(BASETEXTURE, probe).r * C2.x;
+        float ahead = tex3Dlod(BASETEXTURE, float4(probe, 0.0)).r * C2.x;
         float skylight = saturate(C2.w);
         float sunlight = exp(-ahead * 2.0);
         float illumination = skylight + (1.0 - skylight) * sunlight;
