@@ -1,0 +1,2 @@
+// General Explosions vertex shader build entrypoint.
+#include "ge_volume_vs30.hlsl"
