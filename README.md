@@ -34,7 +34,22 @@ Your generated Blender/OpenVDB volume files must also be installed:
 
 Compiled VCS and exported VTF files are Git-ignored and not provided in a fresh clone. Run tools/build_shaders.ps1 with your own ShaderCompile.exe, and see docs/PIPELINE.md for the OpenVDB exporter. Existing working compiled shaders do not need rebuilding for these Lua-only changes.
 
-The addon includes client autorun files for craters, dust, networking and volumes, plus a server autorun file for shared cosmetic events. Restart GMod after updating them.
+The addon includes client autorun files for craters, dust, networking and volumes, a server autorun file for shared cosmetic events, and the new orbital railgun entity. **If your installed folder is general_explosions-main, preserve that folder and its generated files:** copy only the updated Lua folder into it. Restart GMod afterward.
+
+## New: orbital railgun visual entity
+
+The first spawnable cinematic entity now lives in `lua/entities/ge_orbital_railgun/`. It is a **visual-only** blue-white energy column, with charge rings, an impact flash, shockwave, optional dynamic light, and our existing volumetric explosion and crater. It has no damage or projectile simulation.
+
+- Spawn through **Q menu → Entities → General Explosions → Orbital Railgun (Visual)** and click relatively flat map ground.
+- Or aim at flat world ground and run `ge_railgun_fire` in the developer console.
+- Only available in single-player or to server admins.
+- Sound cue starts are fixed at **0.0 s** (3-second charge), **3.0 s** (1-second beam fire), and **3.2 s** (5-second explosion audio). Files are provided by the addon owner.
+
+Optional WAVs go under `sound/general_explosions/railgun/` as `railgun_charge.wav`, `railgun_fire.wav`, `railgun_explosion.wav`. Missing sounds do not block the visuals. The beam itself requires no additional compiled shader.
+
+Client color can be set with `ge_railgun_color blue`, `ge_railgun_color purple`, or `ge_railgun_color red`. Admin/server console can adjust `ge_railgun_radius 320`. The volumetric component still requires the original shaders, manifest and VTF sequence.
+
+**Game-testing status:** entity Lua compiles; in-game visual/audio sync and compatibility still need verification. See [the complete railgun guide](docs/RAILGUN.md).
 
 ## In-game controls
 
