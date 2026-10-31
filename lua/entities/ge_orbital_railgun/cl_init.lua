@@ -5,6 +5,7 @@ if not include("general_explosions/load_runtime.lua") then return end
 local enabled = CreateClientConVar("ge_railgun_visuals", "1", true, false, "Show orbital presentation", 0, 1)
 local colorCV = CreateClientConVar("ge_railgun_color", "blue", true, false, "Beam tint: blue, purple, red")
 local heightCV = CreateClientConVar("ge_railgun_beam_height", "6000", true, false, "Orbital column height", 1000, 10000)
+local widthCV = CreateClientConVar("ge_railgun_beam_width", "1.75", true, false, "Beam width multiplier", 0.5, 3)
 local glowCV = CreateClientConVar("ge_railgun_glow", "1", true, false, "Occlusion-aware impact glare", 0, 1)
 local lightCV = CreateClientConVar("ge_railgun_light", "1", true, false, "Local environmental light", 0, 1)
 local qualityCV = CreateClientConVar("ge_railgun_quality", "1", true, false, "Beam detail: 0, 1, 2", 0, 2)
@@ -149,7 +150,7 @@ local function column(self, t, col, alpha, detail, radius)
     local target = source + (pos - source) * travel
     local fade = R.Smooth((t - self.GEFireAt) / 0.035) * R.Smooth((self.GEBeamEnd - t) / 0.4) * alpha
     if fade <= 0 then return end
-    local width = radius * 0.30 * (1 + math.sin(t * 53) * 0.055 + math.sin(t * 87) * 0.025)
+    local width = radius * 0.30 * widthCV:GetFloat() * (1 + math.sin(t * 53) * 0.055 + math.sin(t * 87) * 0.025)
     local flow = t * 5
     render.SetMaterial(beamMat)
     render.DrawBeam(source, target, width * 4.6, flow, flow + 12, tint(col.outer, 25 * fade))
@@ -266,7 +267,7 @@ local function discharge(self, t, col, alpha, detail, radius)
     local travel = R.Smooth(e / (self.GEImpactAt - self.GEFireAt))
     -- A compressed luminous torus rides the leading edge of the discharge.
     ring(top - UP * height * travel, Vector(1,0,0), Vector(0,1,0),
-        radius * (0.35 + (1 - travel) * 0.9), 24, radius * 0.035,
+        radius * (0.35 + (1 - travel) * 0.9) * widthCV:GetFloat(), 24, radius * 0.035,
         tint(col.core, fade * (1 - R.Smooth((e - 0.2) / 0.15)) * 220), t)
     -- The sky iris stays energized during firing, tying the column to a source.
     ring(top, Vector(1,0,0), Vector(0,1,0), radius * 1.7, detail == 0 and 24 or 48,

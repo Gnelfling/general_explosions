@@ -41,10 +41,11 @@ class RailgunVisualContractTests(unittest.TestCase):
         self.assertIn("render.DrawSprite(", self.client)
         self.assertIn("self:SetRenderBounds(", self.client)
 
-    def test_only_cosmetic_actions(self):
-        both = self.shared + self.server + self.client
-        for forbidden in ("util.BlastDamage(", ":TakeDamage(", ":FireBullets("):
-            self.assertNotIn(forbidden, both)
+    def test_damage_is_server_only_and_visual_receivers_remain_cosmetic(self):
+        self.assertIn('if damage > 0 then', self.server)
+        self.assertNotIn('util.BlastDamage(', self.client)
+        for path in ('lua/autorun/client/ge_fx_client.lua', 'lua/autorun/server/ge_fx_server.lua'):
+            self.assertNotIn('util.BlastDamage(', (ROOT/path).read_text())
 
     def test_original_shaders_and_frame_records_preserved(self):
         hashes = {

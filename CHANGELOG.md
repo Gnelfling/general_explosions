@@ -1,5 +1,11 @@
 # Changelog
 
+## Wider laser, impact shake and configurable damage
+
+- User-requested scope change: railgun impact now deals server-side explosion damage (150 default, 0 for cinematic mode), once at 3.2 seconds.
+- Beam width defaults to 1.75x with a client slider; impact shake is stronger and includes airborne players.
+- Preserves all visual layers, shaders, local volume assets and sound cue starts. Actual engine damage and visuals still need testing.
+
 ## Additional railgun choreography
 
 - Added rising canted containment hoops, final axial latches, an energized

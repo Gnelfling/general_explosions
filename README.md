@@ -2,7 +2,7 @@
 
 An original visual-effects-only addon using a real 200-frame GroundExplosionVDB animation, Shader Model 3.0 volume raymarching, and custom 3D VTF textures.
 
-**Status:** The owner previously verified the volumetric smoke/fire animation in-game. The upgraded railgun, crater and synchronization pass automated code checks but still require the [GMod acceptance matrix](docs/RAILGUN.md#required-in-game-acceptance-matrix-not-yet-executed). No damage, projectiles or destructive weapon behavior is implemented.
+**Status:** The owner previously verified the volumetric smoke/fire animation in-game. The upgraded railgun, crater and synchronization pass automated code checks but still require the [GMod acceptance matrix](docs/RAILGUN.md#required-in-game-acceptance-matrix-not-yet-executed). The railgun now applies configurable explosion damage (150 by default); use ge_railgun_damage 0 for cinematic mode. No projectile or BSP destruction is added.
 
 ## Features
 
@@ -42,9 +42,11 @@ The checked-in manifest contains 188 texture records (0–187). Their source dat
 
 ## Orbital railgun cinematic entity
 
+Latest controls: `ge_railgun_beam_width 1.75` (client, 0.5�3), `ge_railgun_shake 1`, `ge_railgun_shake_strength 8`, `ge_railgun_damage 150` (server, 0�1000). Damage occurs once at 3.2 seconds within the impact radius (320 by default); damage 0 restores cinematic-only operation. Generic crater/volume/FX previews remain cosmetic.
+
 The spawnable entity lives in `lua/entities/ge_orbital_railgun/`. It combines procedural orbital energy visuals with the existing volumetric explosion and stencil bowl. The beam requires no new compiled shaders or downloadable textures.
 
-- Spawn through **Q menu → Entities → General Explosions → Orbital Railgun (Visual)** and click relatively flat map ground.
+- Spawn through **Q menu → Entities → General Explosions → Orbital Railgun** and click relatively flat map ground.
 - Or aim at flat world ground and run `ge_railgun_fire` in the developer console.
 - Only available in single-player or to server admins.
 - Sound cue starts remain **0.0 s**, **3.0 s**, and **3.2 s**, relative to the networked cinematic start. Server scheduling is tick-quantized; client audio also has network/device latency.

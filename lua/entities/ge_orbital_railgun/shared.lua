@@ -1,8 +1,8 @@
 -- General Explosions: orbital railgun visual sequence.
--- No damage, physics, projectiles, or map modifications.
+-- Configurable explosion damage; no projectiles or BSP/collision edits.
 ENT.Type = "anim"
 ENT.Base = "base_anim"
-ENT.PrintName = "Orbital Railgun (Visual)"
+ENT.PrintName = "Orbital Railgun"
 ENT.Category = "General Explosions"
 ENT.Spawnable = true
 ENT.AdminOnly = true

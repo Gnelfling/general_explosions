@@ -3,7 +3,11 @@ AddCSLuaFile("cl_init.lua")
 include("shared.lua")
 if not include("general_explosions/load_runtime.lua") then return end
 
--- A sandbox presentation effect, not a functioning weapon.
+-- Admin-only orbital effect with configurable server-side impact damage.
+local damageCV = CreateConVar("ge_railgun_damage", "150", FCVAR_ARCHIVE,
+    "Explosion damage at impact; 0 restores cinematic-only behavior.", 0, 1000)
+local shakeStrengthCV = CreateConVar("ge_railgun_shake_strength", "8", FCVAR_ARCHIVE,
+    "Impact screen shake amplitude.", 0, 20)
 local radiusCV = CreateConVar(
     "ge_railgun_radius", "320", FCVAR_ARCHIVE,
     "Visual crater radius in Source units (80-900).", 80, 900
@@ -75,7 +79,7 @@ local function spawnVisual(ply, tr, className, manualUndo)
     -- Sandbox already registers SpawnFunction results. Only the direct
     -- console path needs its own undo/cleanup entry.
     if manualUndo then
-        undo.Create("Orbital Railgun (Visual)")
+        undo.Create("Orbital Railgun")
         undo.AddEntity(ent)
         undo.SetPlayer(ply)
         undo.Finish()
@@ -142,7 +146,15 @@ function ENT:Think()
             ErrorNoHalt("[GE] Railgun: ge_fx_server.lua is missing; volumetric impact not spawned.\n")
         end
         if shakeCV:GetBool() then
-            util.ScreenShake(origin, 4, 6, 1.2, math.min(radius * 7, 3000))
+            util.ScreenShake(origin, shakeStrengthCV:GetFloat(), 8, 1.2, math.min(radius * 8, 3000), true)
+        end
+        local damage = GERuntime.Number(damageCV:GetFloat(), 0, 0, 1000)
+        if damage > 0 then
+            local creator = self:GetCreator()
+            -- Attribution survives the creator disconnecting. The solid-world
+            -- contact point is lifted slightly to keep the blast out of the BSP.
+            util.BlastDamage(self, IsValid(creator) and creator or self,
+                origin + Vector(0, 0, 8), GERuntime.Number(radius, 320, 80, 900), damage)
         end
         cue(origin, "railgun_explosion.wav")
     end
@@ -155,14 +167,14 @@ concommand.Add("ge_railgun_fire", function(ply)
     if not allowed(ply) then return end
     local visual = spawnVisual(ply, ply:GetEyeTrace(), "ge_orbital_railgun", true)
     if IsValid(visual) then
-        ply:ChatPrint("[GE] Orbital railgun sequence started (visual only).")
+        ply:ChatPrint("[GE] Orbital railgun started | explosion damage: " .. damageCV:GetFloat())
     end
-end, nil, "Start a cosmetic orbital beam at the map ground under your crosshair.")
+end, nil, "Start the orbital railgun at map ground; ge_railgun_damage 0 for cinematic mode.")
 
 concommand.Add("ge_railgun_status", function(ply)
     if not allowed(ply) then return end
     ply:ChatPrint("[GE] Active orbital visuals: " .. activeCount() ..
-        " | radius: " .. radiusCV:GetInt() .. " | optional audio: 3 WAV files.")
+        " | radius: " .. radiusCV:GetInt() .. " | damage: " .. damageCV:GetFloat())
 end)
 
 concommand.Add("ge_railgun_clear", function(ply)

@@ -47,6 +47,7 @@ resource={AddFile=function() end}
 sound={calls={}}
 function sound.Play(path,pos) sound.calls[#sound.calls+1]={path=path,time=NOW,pos=pos} end
 util={AddNetworkString=function() end,ScreenShake=function() end}
+function util.BlastDamage() end
 net={callbacks={},writes={}}
 function net.Receive(name,fn) net.callbacks[name]=fn end
 function net.Start(name) net.last=name end
@@ -68,5 +69,6 @@ function ENT:GetPos() return Vector(0,0,3) end
 function ENT:NextThink() end
 function ENT:Remove() self.removed=true end
 function ENT:EntIndex() return 7 end
+function ENT:GetCreator() return self.creator end
 function ENT:SetRenderBounds() end
 function EyePos() return Vector(0,0,100) end
