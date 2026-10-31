@@ -1,49 +1,91 @@
-# General Explosions — volumetric VFX for Garry's Mod
+# General Explosions — volumetric visual effects for Garry's Mod
 
-An original, open development project for **animated 3D smoke and fire** in Garry's Mod. The first asset target is the user's `GroundExplosionVDB` (200-frame OpenVDB sequence, grids `density` and `flames`).
+An original visual-effects-only addon using a real 200-frame GroundExplosionVDB animation, Shader Model 3.0 volume raymarching, and custom 3D VTF textures.
 
-## Status — work in progress
+**Status:** Smoke, fire and the full animation have been verified in-game by the project owner. The crater, impact accents and multiplayer synchronization added afterward are new code and still require testing in GMod. No gameplay damage, projectiles or weapons are implemented.
 
-**This is not yet a working GMod effect.** The repo starts with a Blender/OpenVDB volume-to-VTF conversion pipeline, an HLSL ray-marching design, and a GMod integration scaffold. The custom Source shaders have **not** been compiled into `.vcs` or validated in-game. If you do not have compiled shaders, **GMod cannot render the new material**.
+## Features
 
-## Why this pipeline?
+- Real animated volumetric smoke and fire, generated from OpenVDB density/flames fields.
+- Looping preview and independent one-shot instances, each with its own position, scale and lifetime.
+- Playback speed, opacity, fire gain, smoke tint, size, ambient and GPU step count controls.
+- Procedural visual crater: irregular opening, sunken mesh bowl, rim, scorched soil blanket, stencil/depth hole illusion.
+- Crater geometry detail controls, culling, instance limits and cleanup.
+- Lightweight ground dust accents and combined local preview.
+- Multiplayer broadcasts of cosmetic effects; saved crater positions synchronized for later joining players.
+- Repeatable PowerShell shader compile script and CI syntax checks.
 
-- Real 3D texture sampling (`sampler3D` / `tex3D`), rather than billboarded sprites or axisymmetric reconstruction.
-- One texture per frame, with `R=density`, `G=flames`, preserving distinct smoke/fire fields.
-- Dense, volume-preserving trilinear resampling with explicit source bounds and density scales.
-- SM3.0 GPU ray marching with absorption and emissive flames.
-- Source-compatible **VTF 7.2 RGBA8888 volume textures** with one mip level.
-- Project-owned shader names / assets. **No V.A.C. compiled shaders or textures are redistributed.**
+## Developer installation
 
-## Layout
+Install the repository as:
 
-```
-tools/vdb_to_vtf.py          Blender Python / OpenVDB converter
-shaders/src/ge_volume_ps30.hlsl    Pixel shader source (uncompiled)
-shaders/src/ge_volume_vs30.hlsl    Vertex shader source (uncompiled)
-lua/autorun/client/ge_volume.lua  Experimental renderer scaffold
-docs/PIPELINE.md            Data contract, limitations, build workflow
-docs/VAC_NOTES.md           Technical comparison, no copied code
-tests/test_vtf_header.py    Small writer-format tests
-```
+    GarrysMod/garrysmod/addons/general_explosions/
 
-## Export the real VDB sequence
+The locally compiled shader binaries must be present in the addon:
 
-Run from **PowerShell** (replace the Blender executable and input paths for your installation):
+    shaders/fxc/ge_volume_ps30.vcs
+    shaders/fxc/ge_volume_vs30.vcs
 
-```powershell
-& "C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe" --background --python "tools\vdb_to_vtf.py" -- --input "C:\Users\klein\Downloads\blender workspace\GroundExplosionVDB\ground_explosion\ground_explosion_VDB\ground_explosion_0000.vdb" --out "output\ground_explosion" --first 100 --last 100 --resolution 128
-```
+Your generated Blender/OpenVDB volume files must also be installed:
 
-To process the animation, change `--first 0 --last 199` after verifying your files exist. Conversion output is **not** committed to Git: 200 frames of 128³ RGBA8 volumes would consume ~1.56 GiB before compression.
+    materials/general_explosions/ground_explosion/frame_0000.vtf ...
+    materials/general_explosions/ground_explosion/frame_0000.vmt ...
+    lua/general_explosions/data/ground_explosion.lua
 
-Read [the pipeline notes](docs/PIPELINE.md) for GMod placement and the current rendering blockers.
+Compiled VCS and exported VTF files are Git-ignored and not provided in a fresh clone. Run tools/build_shaders.ps1 with your own ShaderCompile.exe, and see docs/PIPELINE.md for the OpenVDB exporter. Existing working compiled shaders do not need rebuilding for these Lua-only changes.
 
-## Development principles
+The addon includes client autorun files for craters, dust, networking and volumes, plus a server autorun file for shared cosmetic events. Restart GMod after updating them.
 
-- Work on the **actual** OpenVDB, not a stand-in procedural explosion.
-- Keep shader and texture format specs in sync.
-- Do not claim game compatibility until the shaders compile and the visual is verified in GMod.
-- Keep visual effects separate from any gameplay damage or weapon mechanics.
+## First commands to test in GMod
 
-Reference APIs: [GMod screenspace_general](https://wiki.facepunch.com/gmod/Shaders/screenspace_general), [GMod custom shaders](https://wiki.facepunch.com/gmod/custom_shaders), [OpenVDB Python array extraction](https://www.openvdb.org/documentation/doxygen/python.html).
+Aim at fairly flat world ground on gm_construct, then use the developer console:
+
+    ge_crater_test 260 65      - original stencil crater, radius/depth in Source units
+    ge_crater_scorch           - flattened scorch mark
+    ge_crater_status           - print crater count
+    ge_crater_clear            - remove clientside craters
+    ge_fx_local_test 260 65    - combined crater, dust and 3D volume
+    ge_fx_local_clear          - remove local crater and one-shot volume effects
+    ge_volume_status           - inspect manifest/shader file status
+    ge_volume_preview 1400 1  - existing looping preview
+    ge_volume_stop             - stop looping preview
+    ge_volume_spawn 1400 1    - new one-shot volume
+    ge_volume_clear            - clear one-shot volumes
+
+On the server, available to administrators or local games:
+
+    ge_fx_impact 260 65        - networked cosmetic impact at viewed ground
+    ge_fx_showcase 200         - three staggered cosmetic impacts
+    ge_fx_clear                - clear synchronized crater visuals
+
+## Runtime convars
+
+| Convar | Default | Meaning |
+|---|---:|---|
+| ge_volume_opacity | 100 | Smoke extinction |
+| ge_volume_fire | 0.15 | Flame emission |
+| ge_volume_steps | 40 | Raymarch steps, 8–96 |
+| ge_volume_unit_scale | 8 | World-space scale |
+| ge_volume_speed | 1 | Playback rate (0.5 = half speed) |
+| ge_volume_ambient | 0.18 | Ambient contribution |
+| ge_volume_smoke_r/g/b | 0.40 / 0.42 / 0.44 | Smoke color |
+| ge_volume_max_instances | 3 | Simultaneous one-shot volumes |
+| ge_crater_enabled | 1 | Toggle crater render |
+| ge_crater_detail | 1 | Geometry detail (0–2) |
+| ge_crater_max | 12 | Maximum client craters |
+| ge_crater_distance | 12000 | Crater draw cutoff |
+| ge_fx_dust | 1 | Enable dust |
+| ge_fx_particle_amount | 0.65 | Dust density |
+
+GMod saves many client convars. Values you set during earlier tests may override these new defaults.
+
+## Current limitations
+
+- A stencil crater is a visual illusion. The world collision mesh remains untouched, so players and props do not actually fall into it.
+- Craters may expose artifacts on sloped ground, overlapping props, unusual maps, or when other addons manipulate the stencil/depth buffer.
+- 200 uncompressed 128-cubed RGBA8 frames occupy about 1.56 GiB; animation frame swaps can affect VRAM and frame time.
+- Volume frame interpolation and opaque-scene depth termination are not yet implemented.
+- New gameplay-facing systems are experimental; GitHub syntax checks cannot substitute for real GMod rendering tests.
+- Original code only. No V.A.C. assets, shaders or Lua source are redistributed.
+
+See docs/CRATERS.md for the crater design and test plan; docs/PIPELINE.md for shaders and texture conversion.
