@@ -149,7 +149,9 @@ local function draw()
 
     local unitScale = scale:GetFloat() * GE.preview.multiplier
     local mn, mx = frame.min, frame.max
-    local center = {(mn[1] + mx[1]) * 0.5, (mn[2] + mx[2]) * 0.5, (mn[3] + mx[3]) * 0.5}
+    -- The animation uses one fixed VDB-space anchor, so the smoke doesn't
+    -- snap back to its own bounding-box centre when it expands or rises.
+    local center = GE.manifest.anchor or {0, 0, 0}
     local eye = EyePos()
     local loc = (eye - GE.preview.origin) / unitScale
     local camera = Vector(
