@@ -22,7 +22,7 @@ The following are authored but not yet validated in GMod: conversion into VTF 7.
 
 Run from PowerShell in the checked-out repo:
 
-    & "C:\Program Files (x86)\Steam\steamapps\common\Blender\5.2\blender.exe" --background --python "tools\vdb_to_vtf.py" -- --input "C:\Users\klein\Downloads\blender workspace\GroundExplosionVDB\ground_explosion\ground_explosion_VDB\ground_explosion_0000.vdb" --out "output" --first 100 --last 100 --resolution 128
+    & "C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe" --background --python "tools\vdb_to_vtf.py" -- --input "C:\Users\klein\Downloads\blender workspace\GroundExplosionVDB\ground_explosion\ground_explosion_VDB\ground_explosion_0000.vdb" --out "output" --first 100 --last 100 --resolution 128
 
 When frame 100 is exported correctly, change first to 0 and last to 199 to export the full sequence. You can also use step 2 to skip alternating frames. 128-cubed RGBA8888 uses 8 MiB per frame and approximately 1.56 GiB for 200 frames before compression/overhead. Output should not be checked into Git.
 
