@@ -2,7 +2,7 @@
 if not CLIENT then return end
 GEVisuals = GEVisuals or {}
 local FX = GEVisuals
-local queue, seen, order = {}, {}, {}
+local queue, pending, seen, order = {}, {}, {}, {}
 local function report(kind, reason)
     FX.warnings = FX.warnings or {}
     local key = kind .. tostring(reason)
@@ -18,6 +18,11 @@ end
 
 local function transient(c)
     local age = CurTime() - c.time
+    if age < 0 then
+        pending[#pending + 1] = c
+        while #pending > 32 do table.remove(pending, 1) end
+        return
+    end
     if age < 0.35 and age >= 0 and GEImpactFX then
         GEImpactFX.Burst(c.pos + c.normal * 4, c.radius / 260, c.seed, c.normal)
     end
@@ -28,7 +33,8 @@ local function transient(c)
 end
 
 local function receive(c, snapshot)
-    if not GERuntime.Position(c.pos) or not GERuntime.Finite(c.time) then return end
+    if not GERuntime.Position(c.pos) or not GERuntime.Finite(c.time)
+        or c.time < 0 or c.time > CurTime() + 5 then return end
     c.radius = GERuntime.Number(c.radius, 260, 30, 2000)
     c.depth = GERuntime.Number(c.depth, c.radius * 0.24, 0, c.radius * 0.7)
     if snapshot or not seen[c.id] then crater(c) end
@@ -56,10 +62,14 @@ function FX.SpawnAt(pos, radius, depth, seed, glass)
 end
 
 hook.Add("Think", "GE.FX.BuildCraters", function()
+    for i = #pending, 1, -1 do
+        if pending[i].time <= CurTime() then transient(table.remove(pending, i)) end
+    end
     -- At most one mesh build per frame; joins cannot trigger 32 builds at once.
     if #queue == 0 or not GECraters then return end
+    if queue[1].time > CurTime() then return end
     local c = table.remove(queue, 1)
-    local ok, err = GECraters.Add(c.pos, c.radius, c.depth, { seed = c.seed, glass = c.glass })
+    local ok, err = GECraters.Add(c.pos, c.radius, c.depth, { seed = c.seed, glass = c.glass, time = c.time })
     if not ok then report("Crater", err) end
 end)
 
@@ -72,7 +82,7 @@ net.Receive("ge_fx_crater_snapshot_v2", function()
 end)
 
 function FX.Clear()
-    queue, seen, order = {}, {}, {}
+    queue, pending, seen, order = {}, {}, {}, {}
     if GECraters then GECraters.Clear() end
     if GEVolume then GEVolume.ClearInstances() end
     if GEImpactFX and GEImpactFX.Clear then GEImpactFX.Clear() end

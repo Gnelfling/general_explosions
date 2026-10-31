@@ -1,81 +1,180 @@
-# Orbital railgun — visual-only Sandbox entity
+# Orbital Railgun — cinematic entity
 
-**Status: implemented, Lua syntax checked by CI, not yet visually tested in Garry's Mod.** This is a cinematic in-game effect: no damage, projectiles, physics, actual ground removal, or weapon simulation. A server entity coordinates beam timing and the existing client visual explosion framework.
+The railgun is a cosmetic presentation, with no damage, projectile simulation,
+physics impulses, BSP edits or collision changes. The original OpenVDB volume
+and stencil crater remain the main impact systems. New geometry uses stock
+GMod materials and APIs; no additional compiled shader is required.
 
-## How to spawn
+**Validation status:** Lua 5.1 behavior, syntax, asset and preservation tests
+pass. The upgraded effect has **not been visually tested in Garry's Mod**.
+The owner's earlier smoke/fire test does not validate this upgrade. See
+[AUDIT.md](AUDIT.md) for findings and retained limitations.
 
-In a local GMod Sandbox map (e.g. gm_construct), restart after installing updated Lua. Aim at reasonably level **world** ground (not a prop).
+## Install without losing the working volume
 
-- Q menu → **Entities** → **General Explosions** → **Orbital Railgun (Visual)**, then click ground; or
-- Developer console: ge_railgun_fire; or
-- Q menu → **Utilities** → **General Explosions** → **Visual Effects** → **Trigger orbital railgun visual**.
+Keep your existing addon folder, including a folder named
+`general_explosions-main`. Back it up first. Update the Lua scripts **except**
+your locally generated `lua/general_explosions/data/ground_explosion.lua`.
+Copy the three updated lowercase WAV files from `sound/general_explosions/railgun/`
+to the same location inside the installed addon. Restart the server and clients.
 
-Spawning is limited to single-player or server administrators. The entity removes itself after its beam animation, leaving the original volume and crater effects managed by their own renderers.
+Keep all existing `materials/general_explosions/ground_explosion/` VTF/VMTs,
+`shaders/fxc/ge_volume_*.vcs`, and your matching generated manifest. No shader
+rebuild or volume conversion is needed. A clean clone lacks those large local
+assets. The checked-in manifest contains **188 texture records (0–187)**;
+missing records 188–199 cannot be reconstructed from this repository. Preserve
+your working 200-frame export. The new exporter retains explicit empty frames
+and the requested start/end range for future exports.
 
-## Precise audiovisual timeline
+In multiplayer, distribute the same volume VTF/VMT/VCS assets through your
+existing content package/FastDL setup. Lua, including the installed generated
+manifest, is sent by the server; the three cues are registered with
+`resource.AddFile`. This does not automatically distribute the large volume
+textures or enable custom shaders on a client lacking them.
 
-| Time | Event | User-supplied audio | Audio length |
-|---|---|---|---:|
-| 0.0s | Animated charge rings begin | railgun_charge.wav | 3.0s |
-| 3.0s | Orbital blue-white column fires | railgun_fire.wav | 1.0s |
-| 3.2s | Flash, shockwave, crater, debris/dust and VDB volume start | railgun_explosion.wav | 5.0s |
-| 4.25s | Beam fades away completely | — | — |
-| 5.25s | Temporary beam entity auto-removes | — | — |
-| ~11.5s | Default 200-frame volumetric animation ends (24 FPS at speed 1) | — | — |
+## Spawn and cancel
 
-**These sound cues are triggered by the server at 0.0, 3.0 and 3.2 seconds, using sound.Play at the effect's world position.** Sound length is authored in the WAV itself and is not force-trimmed by the entity. The animation continues normally if any WAV files are missing.
+Use Sandbox Q → Entities → General Explosions → **Orbital Railgun (Visual)**,
+or aim at fairly level world ground and run `ge_railgun_fire`. The Utilities
+panel has the same action. Single-player and server admins can spawn it;
+placement on props, sky or steep walls is rejected. There is a short 0.45-second
+network lead-in before the cinematic clock starts.
 
-Create this exact folder **inside the installed addon**, not in lua/:
+`ge_railgun_status` reports active entities and radius. `ge_railgun_clear`
+cancels active railguns and clears replicated impacts. Undo cancels an active
+entity; after impact, the crater and volume have independent lifetimes.
+Already playing world-positioned sound is allowed to finish. `ge_fx_resync`
+requests retained history again (server limited to once per ten seconds).
 
-    sound/general_explosions/railgun/railgun_charge.wav
-    sound/general_explosions/railgun/railgun_fire.wav
-    sound/general_explosions/railgun/railgun_explosion.wav
+## Timeline and sound contract
 
-Use standard GMod-compatible uncompressed PCM WAV files. Sound volume/attenuation depend on GMod's positional audio engine; file loudness is controlled by the audio producer.
+All offsets are relative to the networked `StartTime`, not the spawn click.
 
-## Implementation
+| Offset | Presentation | Sound cue start |
+|---|---|---|
+| 0.0 s | Rotating segmented aperture, converging motes, growing charge light | `railgun_charge.wav` |
+| 3.0 s | Column descends from the sky, with white core and helical filaments | `railgun_fire.wav` |
+| 3.2 s | Column reaches target; glare, double shock ring, crater, dust/sparks, original VDB | `railgun_explosion.wav` |
+| 4.25 s | Beam completely faded | — |
+| 4.95 s | Environmental afterlight retired | — |
+| 5.25 s | Temporary entity removed | — |
+| Impact + 6 s | Crater fissures cooled to black | — |
+| Impact + 200/24 s | End of a full 200-frame volume at speed 1 | — |
 
-- lua/entities/ge_orbital_railgun/shared.lua — entity identity, Spawnmenu category, networkvars and timing constants.
-- lua/entities/ge_orbital_railgun/init.lua — admin-only spawn validation, networked start time, timed optional audio cues, impact FX event, auto cleanup.
-- lua/entities/ge_orbital_railgun/cl_init.lua — charge rings, layered animated render.DrawBeam column, electrical accents, flash/shockwave, optional DynamicLight.
-- lua/autorun/server/ge_fx_server.lua — existing multiplayer cosmetic effect replication and retained crater data.
-- lua/autorun/client/ge_fx_client.lua — receives cosmetic impact and instantiates the procedural crater, dust and 200-frame VDB smoke.
+The three sound offsets remain **0.0 / 3.0 / 3.2 seconds**. The server emits
+each cue once on the first simulation tick reaching its offset. Tick spacing,
+network transit and device buffering prevent a promise of sample-accurate
+client playback. Joining players see the current animation phase and recent
+volumes; historical sounds and old particle bursts are not replayed.
 
-No additional VCS shaders or proprietary assets are required for the **beam**. To see the **volumetric explosion**, the compiled volume shader VCS files, generated Lua manifest, and the frame VTF/VMT files must already be correctly installed.
+The included cue content is preserved without trimming or resampling. To make
+it compatible with positional Source playback, stereo/24-bit originals were
+mixed to **mono 16-bit PCM at 44.1 kHz**. Exact frame counts remain 138240,
+224256 and 589875 (approximately 3.135, 5.085 and 13.377 seconds). These tails
+overlap intentionally; they are not the old guide's stated 3/1/5-second lengths.
+The unused `railgun_fire(1).WAV` is retained and never scheduled. The offline
+conversion utility is `tools/prepare_audio.py`.
 
-## Settings
+## Visual controls and budgets
 
-Clientside:
+| Client convar | Default | Purpose |
+|---|---:|---|
+| `ge_railgun_visuals` | 1 | Beam, charge, glare and railgun lighting |
+| `ge_railgun_color` | blue | blue / purple / red |
+| `ge_railgun_quality` | 1 | 0 / 1 / 2: segments, filaments, motes, collars |
+| `ge_railgun_beam_height` | 6000 | Sky column height, 1000–10000 |
+| `ge_railgun_distance` | 18000 | Draw cutoff with a fade over its last 20% |
+| `ge_railgun_glow` | 1 | Charge motes and occlusion-aware impact glare |
+| `ge_railgun_light` | 1 | World/entity dynamic illumination |
+| `ge_railgun_light_budget` | 2 | Nearest simultaneous railgun lights, 0–4 |
+| `ge_crater_heat` | 1 | Six-second cooling fracture accents |
+| `ge_fx_particle_budget` | 192 | Conservative active impact-particle cap, 32–512 |
+| `ge_fx_particle_amount` | 0.65 | Dust, inert flecks and spark density |
 
-    ge_railgun_color blue
-    ge_railgun_color purple
-    ge_railgun_color red
-    ge_railgun_visuals 1
-    ge_railgun_glow 1
-    ge_railgun_light 1
-    ge_railgun_beam_height 6000
+Server convars: `ge_railgun_radius 320` (80–900),
+`ge_railgun_shake 1` (optional cosmetic camera shake),
+`ge_railgun_max_active 2` (1–6). Radius scales the beam, shock rings, crater,
+volume and particles together. Colors are a local preference, not server state.
 
-Serverside (admin/server console):
+`ge_quality low|balanced|high` now also selects beam detail and light budget.
+Existing smoke/fire artistic settings are preserved. VDB speed remains a local
+control; clients with different speed settings deliberately play it differently.
 
-    ge_railgun_radius 320
-    ge_railgun_shake 1
-    ge_railgun_max_active 2
+Safeguards: cached unit circles; distance-dependent beam detail; a single
+visibility query per entity per engine tick; at most one world light per selected
+entity, refreshed at 20 Hz; no per-frame particle emitter; at most eight impact
+emitters and 128 particles per burst; no particle collisions; four-second emitter
+retirement; one crater build per frame with 25/49/81 terrain traces by detail;
+bounded queues/history/meshes/volumes. Distant volumes age without looking up
+their frame materials. Source owns texture residency: these controls do not
+guarantee a VRAM ceiling.
 
-The impact radius affects crater size and the scale of the existing smoke effect. Playback speed of the VDB is separately controlled with ge_volume_speed. For performance: ge_quality low, ge_quality balanced, or ge_quality high (client).
+## Multiplayer and cleanup
 
-## First in-game validation
+Version 2 impact records carry a monotonic event ID, server impact timestamp,
+position, surface normal, radius/depth and seed. Live events and client-ready
+history snapshots share that format. Duplicate IDs suppress repeated particles
+and volumes; snapshots rebuild retained craters and seek recent volumes to their
+actual age. Old particles are skipped once the event is 0.35 seconds old.
+The bounded history is authoritative for retained craters; older evicted history
+does not reconstruct volumes for new players.
 
-1. ge_volume_status must report the compiled volume shaders and a non-empty manifest. Ideally it should report 200 frame records.
-2. With client graphics presets set to balanced, trigger ge_railgun_fire at a level world surface.
-3. Expect charge rings for 3 seconds; bright sky beam at 3 seconds; impact at 3.2 seconds; beam gone around 4.25 seconds; smoke persists.
-4. Check console for [GE] error messages. If the beam renders but smoke does not, investigate the exported VTF/manifest and VCS installation first.
-5. Verify appearance on flat ground, then irregular terrain. The crater stencil is still experimental; collision does not change.
-6. Check multiplayer timing, rejoining snapshots, culling at long distances, and performance with 2 active effect entities.
+Map cleanup clears volumes, particles, mesh queues, crater meshes and railgun
+lights. Pending showcase timers are invalidated. Crater draw failures reset
+depth/color/alpha/stencil/blend state and quarantine the failed crater after one
+diagnostic. Beam rendering does not install those overrides. Cleanup hides
+particle emitters immediately; their remaining particles expire naturally.
 
-Known risks: engine far-plane clipping of the tall beam, unusual map geometry, addon render-hook conflicts, FPS cost of multiple 128-cubed volumes, and the unverified stencil crater technique. CI Lua parsing cannot prove that the visual output is correct.
+## Automated validation
 
-## Installation — preserve local volume assets
+From the repository root, using Python 3.10+:
 
-If your GMod addon directory is named general_explosions-main, **keep that folder name**. Pull the repo into your working clone and copy only the lua/ tree to your existing installed addon. Do **not** replace the entire addon folder with a clean Git clone because local shader binaries, manifest and large texture frames are Git-ignored and would be lost. Restart GMod after copying.
+```text
+python -m pip install -r tests/requirements.txt
+python -m unittest discover -s tests -v
+python -m py_compile tools/vdb_to_vtf.py tools/prepare_audio.py
+```
 
-For API background see https://wiki.facepunch.com/gmod/ENTITY:SpawnFunction and https://wiki.facepunch.com/gmod/render_beams.
+Lupa provides a development-only Lua 5.1 runtime. Tests execute the actual Lua
+against small GMod boundary mocks: exact cue offsets/one-shot dispatch,
+network duplicates and late packets, 200-frame selection and empty timing,
+all palettes/detail levels/phases, render failure cleanup, trace/particle/light
+budgets, volume culling and hidden playback. Golden hashes protect the original
+shader sources and checked-in manifest; audio tests protect sample counts and
+PCM format. CI also parses scripts with the native Lua 5.1 compiler.
+
+These tests cannot validate the GPU image, material availability, Source audio
+attenuation, network transport, stencil interactions or frame time.
+
+## Required in-game acceptance matrix (not yet executed)
+
+Record build/branch, map, GMod version, GPU, resolution, graphics preset,
+convars, player count and addon list with each run. Capture video and console
+output; mark each row pass/fail with evidence before calling a build production
+ready.
+
+| Test | Method | Acceptance |
+|---|---|---|
+| Existing volume | `ge_volume_status`, then original preview and a full one-shot | Working local 200-frame sequence, unchanged color/anchor/scale; no missing-frame/material errors |
+| Timeline | Record at 60 FPS; compare charge, fire, impact and audio waveform onsets | Scheduled 0/3/3.2 offsets; descending head meets flash; no duplicate cues |
+| Composition | gm_construct daylight and a dark map; all three palettes at each preset | Charge readable, core distinct from aura, smoke/fire visible through controlled glare, no persistent whiteout |
+| Ground | Flat concrete, gentle slopes, irregular terrain; radii 80/320/900 | Aperture follows surface; crater seam/rim acceptable; no loose center wedge or depth leaks |
+| Occlusion | View through walls/props, behind terrain, in water, inside volume; test mirrors/RTs | Glare occludes; no unexpected through-wall rings, depth corruption or repeated visibility queries |
+| Stencil integration | Overlap two craters; add depth/stencil-using addons | No leaked render state; document any retained hole-illusion artifacts |
+| Multiplayer | Dedicated server + two clients; introduce 100/250 ms latency with supported test setup | Same beam phase and seeded geometry; VDB seeks rather than restarts; each live cue once |
+| Joining | Join during charge, after impact, and after volume end; run `ge_fx_resync` twice | Current beam phase; recent volume at correct age; old crater without replayed flash/audio/particles |
+| Lifecycle | Undo before impact; remove mid-beam; map cleanup during showcase; clear/resync | No delayed impact after cancellation, stuck light, visible old particles, leaked mesh or error spam |
+| Budgets | One/two/max-active entities at low/balanced/high; near and far | Record baseline vs peak CPU/GPU frame times and hitch on crater build; choose budgets to meet target hardware's frame budget |
+| Long run | Repeated spawns/clears for 10 minutes; inspect counts and frame time | Counts return to configured bounds; no increasing mesh/emitter count; no recurring Lua errors |
+| Linux/content | Case-sensitive dedicated install and fresh client with intended content delivery | Lowercase cues audible and positional; manifest and all required local volume assets available |
+
+Known limits remain: a stencil crater is not a physical opening; translucent
+props, overlapping craters, water and other stencil users can expose artifacts.
+The unchanged raymarcher does not stop at scene depth inside the volume and does
+not interpolate frames. Tall columns can clip against map sky/far planes.
+
+API references: [beams](https://wiki.facepunch.com/gmod/render_beams),
+[pixel visibility](https://wiki.facepunch.com/gmod/util.PixelVisible),
+[dynamic light fields](https://wiki.facepunch.com/gmod/Structures/DynamicLight),
+[stencil-scoped clearing](https://wiki.facepunch.com/gmod/render.ClearBuffersObeyStencil),
+[audio format basics](https://wiki.facepunch.com/gmod/sound_basics).

@@ -41,14 +41,14 @@ end
 
 local function validGround(tr)
     return tr and tr.Hit and tr.HitWorld and not tr.HitSky
-        and tr.HitNormal and tr.HitNormal.z >= 0.65
+        and GERuntime.Position(tr.HitPos) and GERuntime.Position(tr.HitNormal) and tr.HitNormal.z >= 0.65
 end
 
 local function activeCount()
     return #ents.FindByClass("ge_orbital_railgun")
 end
 
-local function spawnVisual(ply, tr, className)
+local function spawnVisual(ply, tr, className, manualUndo)
     if not allowed(ply) then return nil end
     if not validGround(tr) then
         ply:ChatPrint("[GE] Aim at level map ground (not a prop) to place the railgun effect.")
@@ -68,13 +68,18 @@ local function spawnVisual(ply, tr, className)
     ent:SetAngles(Angle(0, 0, 0))
     ent:SetGroundNormal(tr.HitNormal)
     ent:Spawn()
+    if not IsValid(ent) then return nil end
     ent:Activate()
     ent:SetCreator(ply)
-    undo.Create("Orbital Railgun (Visual)")
-    undo.AddEntity(ent)
-    undo.SetPlayer(ply)
-    undo.Finish()
-    ply:AddCleanup("effects", ent)
+    -- Sandbox already registers SpawnFunction results. Only the direct
+    -- console path needs its own undo/cleanup entry.
+    if manualUndo then
+        undo.Create("Orbital Railgun (Visual)")
+        undo.AddEntity(ent)
+        undo.SetPlayer(ply)
+        undo.Finish()
+        ply:AddCleanup("sents", ent)
+    end
     return ent
 end
 
@@ -83,6 +88,7 @@ function ENT:SpawnFunction(ply, tr, className)
 end
 
 function ENT:Initialize()
+    if activeCount() > maxActiveCV:GetInt() then self:Remove() return end
     -- Model is used only as an engine entity anchor; no model is drawn.
     self:SetModel("models/hunter/blocks/cube025x025x025.mdl")
     self:SetMoveType(MOVETYPE_NONE)
@@ -146,7 +152,7 @@ end
 
 concommand.Add("ge_railgun_fire", function(ply)
     if not allowed(ply) then return end
-    local visual = spawnVisual(ply, ply:GetEyeTrace(), "ge_orbital_railgun")
+    local visual = spawnVisual(ply, ply:GetEyeTrace(), "ge_orbital_railgun", true)
     if IsValid(visual) then
         ply:ChatPrint("[GE] Orbital railgun sequence started (visual only).")
     end
@@ -157,3 +163,9 @@ concommand.Add("ge_railgun_status", function(ply)
     ply:ChatPrint("[GE] Active orbital visuals: " .. activeCount() ..
         " | radius: " .. radiusCV:GetInt() .. " | optional audio: 3 WAV files.")
 end)
+
+concommand.Add("ge_railgun_clear", function(ply)
+    if IsValid(ply) and not allowed(ply) then return end
+    for _, ent in ipairs(ents.FindByClass("ge_orbital_railgun")) do ent:Remove() end
+    if GEFXServer then GEFXServer.Clear() end
+end, nil, "Cancel active railgun visuals and clear synchronized cosmetic impacts.")

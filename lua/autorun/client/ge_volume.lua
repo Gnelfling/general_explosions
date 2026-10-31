@@ -42,22 +42,30 @@ local function setup()
     end
     if not GE.manifest then
         local ok, result = pcall(include, dataPath)
-        if not ok or not result or not result.frames or #result.frames == 0 then
+        if not ok or type(result) ~= "table" or type(result.frames) ~= "table" or #result.frames == 0 then
             return false, "Could not load non-empty volume manifest"
         end
         if not GERuntime.Finite(result.fps or 24) or (result.fps or 24) <= 0 then
             return false, "Invalid manifest FPS"
         end
         result.fps = result.fps or 24
+        if result.anchor ~= nil then
+            if type(result.anchor) ~= "table" then return false, "Invalid volume anchor" end
+            for axis = 1, 3 do
+                if not GERuntime.Finite(result.anchor[axis]) then return false, "Invalid volume anchor" end
+            end
+        end
         local previous = -1
         for _, frame in ipairs(result.frames) do
-            if not GERuntime.Finite(frame.frame) or frame.frame <= previous then
+            if type(frame) ~= "table" or not GERuntime.Finite(frame.frame) or frame.frame <= previous
+                or frame.frame < 0 or frame.frame % 1 ~= 0 then
                 return false, "Manifest frames must be strictly ordered"
             end
             previous = frame.frame
             if not frame.empty then
                 if type(frame.texture) ~= "string" or type(frame.min) ~= "table" or type(frame.max) ~= "table"
-                    or not GERuntime.Finite(frame.density_scale) or not GERuntime.Finite(frame.flames_scale) then
+                    or not GERuntime.Finite(frame.density_scale) or not GERuntime.Finite(frame.flames_scale)
+                    or frame.density_scale < 0 or frame.flames_scale < 0 then
                     return false, "Invalid volume frame data"
                 end
                 for axis = 1, 3 do
@@ -65,6 +73,12 @@ local function setup()
                         or frame.max[axis] <= frame.min[axis] then return false, "Invalid volume bounds" end
                 end
             end
+        end
+        local first = result.first_frame or result.frames[1].frame
+        local last = result.last_frame or previous
+        if not GERuntime.Finite(first) or not GERuntime.Finite(last) or first % 1 ~= 0 or last % 1 ~= 0
+            or first < 0 or first > result.frames[1].frame or last < previous then
+            return false, "Invalid manifest timeline"
         end
         GE.manifest = result
     end
@@ -220,7 +234,7 @@ function GE.Spawn(origin, multiplier, startTime)
     if not GERuntime.Position(origin) then return false, "invalid world position" end
     local ok, reason = setup()
     if not ok then return false, reason end
-    startTime = GERuntime.Number(startTime, CurTime(), 0, CurTime())
+    startTime = GERuntime.Number(startTime, CurTime(), 0, CurTime() + 5)
     local _, alive = GERuntime.Frame(GE.manifest, CurTime() - startTime, playbackSpeed:GetFloat(), false)
     if not alive then return false, "animation expired" end
     table.insert(GE.instances, {

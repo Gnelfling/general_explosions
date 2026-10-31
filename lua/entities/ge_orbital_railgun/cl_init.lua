@@ -1,173 +1,266 @@
 include("shared.lua")
 
--- Clientside cinematic only. Uses standard Source additive beam materials,
--- avoiding a new compiled shader or any new downloadable texture assets.
-local enabledCV = CreateClientConVar("ge_railgun_visuals", "1", true, false, "Show cosmetic orbital beam", 0, 1)
+-- Original procedural geometry over stock Source materials. No new shaders.
+local enabled = CreateClientConVar("ge_railgun_visuals", "1", true, false, "Show orbital presentation", 0, 1)
 local colorCV = CreateClientConVar("ge_railgun_color", "blue", true, false, "Beam tint: blue, purple, red")
-local heightCV = CreateClientConVar("ge_railgun_beam_height", "6000", true, false, "Visual beam length in Source units", 1000, 10000)
-local glowCV = CreateClientConVar("ge_railgun_glow", "1", true, false, "Enable glow sprites", 0, 1)
-local lightCV = CreateClientConVar("ge_railgun_light", "1", true, false, "Enable brief dynamic lighting", 0, 1)
-
+local heightCV = CreateClientConVar("ge_railgun_beam_height", "6000", true, false, "Orbital column height", 1000, 10000)
+local glowCV = CreateClientConVar("ge_railgun_glow", "1", true, false, "Occlusion-aware impact glare", 0, 1)
+local lightCV = CreateClientConVar("ge_railgun_light", "1", true, false, "Local environmental light", 0, 1)
+local qualityCV = CreateClientConVar("ge_railgun_quality", "1", true, false, "Beam detail: 0, 1, 2", 0, 2)
+local distanceCV = CreateClientConVar("ge_railgun_distance", "18000", true, false, "Orbital visual cutoff", 2000, 50000)
+local lightsCV = CreateClientConVar("ge_railgun_light_budget", "2", true, false, "Nearest orbital lights allowed", 0, 4)
 local beamMat = Material("sprites/physbeam")
 local arcMat = Material("cable/blue_elec")
 local glowMat = Material("sprites/light_glow02_add")
-local UP = Vector(0, 0, 1)
-
+local UP, TAU = Vector(0, 0, 1), math.pi * 2
+local R = GERuntime
 local palettes = {
     blue = { outer = { 32, 141, 255 }, core = { 231, 249, 255 } },
     purple = { outer = { 166, 78, 255 }, core = { 248, 222, 255 } },
     red = { outer = { 255, 65, 94 }, core = { 255, 235, 226 } }
 }
-
-local function tint(rgb, alpha)
-    return Color(rgb[1], rgb[2], rgb[3], math.Clamp(alpha, 0, 255))
-end
-
-local function palette()
-    return palettes[string.lower(colorCV:GetString())] or palettes.blue
-end
-
-local function drawRing(pos, radius, segments, width, col, angle)
-    if radius < 1 or width <= 0 or col.a <= 0 then return end
-    render.SetMaterial(beamMat)
-    render.StartBeam(segments + 1)
+local function palette() return palettes[string.lower(colorCV:GetString())] or palettes.blue end
+local function tint(rgb, alpha) return Color(rgb[1], rgb[2], rgb[3], math.Clamp(alpha, 0, 255)) end
+local circles = {}
+local function circle(segments)
+    if circles[segments] then return circles[segments] end
+    local points = {}
     for i = 0, segments do
-        local theta = i / segments * math.pi * 2 + (angle or 0)
-        local point = pos + Vector(math.cos(theta) * radius, math.sin(theta) * radius, 5)
-        render.AddBeam(point, width, i / segments * 2, col)
+        local angle = i / segments * TAU
+        points[i] = { math.cos(angle), math.sin(angle) }
+    end
+    circles[segments] = points
+    return points
+end
+
+local function basis(normal)
+    if normal:LengthSqr() < 0.5 then normal = UP end
+    local right = Vector(0, 1, 0):Cross(normal):GetNormalized()
+    return normal, right, normal:Cross(right):GetNormalized()
+end
+
+local function ring(pos, right, forward, radius, segments, width, col, rotation, first, count)
+    if radius < 1 or width <= 0 or col.a <= 0 then return end
+    first, count = first or 0, count or segments
+    local points = circle(segments)
+    local cs, sn = math.cos(rotation or 0), math.sin(rotation or 0)
+    render.SetMaterial(beamMat)
+    render.StartBeam(count + 1)
+    for j = first, first + count do
+        local p = points[j % segments]
+        local x, y = p[1] * cs - p[2] * sn, p[1] * sn + p[2] * cs
+        render.AddBeam(pos + (right * x + forward * y) * radius, width, j / segments * 4, col)
     end
     render.EndBeam()
 end
 
+local function retireLight(self)
+    if not self._geLightActive then return end
+    local light = DynamicLight(self:EntIndex())
+    if light then light.size = 0; light.brightness = 0; light.dietime = CurTime() + 0.01 end
+    self._geLightActive = false
+end
+
+-- Small entity registry, not a world search on every light update.
+GERailgunVisuals = GERailgunVisuals or { active = {} }
+local registry = GERailgunVisuals
+local lightFrame, selected = -1, {}
+local function lightSelected(self)
+    if lightFrame ~= FrameNumber() then
+        lightFrame, selected = FrameNumber(), {}
+        local candidates, eye = {}, EyePos()
+        for ent in pairs(registry.active) do
+            if IsValid(ent) and not ent._geCancelled then
+                local t = CurTime() - ent:GetStartTime()
+                local d = eye:DistToSqr(ent:GetPos())
+                if t >= 0 and t < ent.GELifetime and d < 5000 ^ 2 then
+                    candidates[#candidates + 1] = { ent = ent, distance = d }
+                end
+            end
+        end
+        table.sort(candidates, function(a, b) return a.distance < b.distance end)
+        for i = 1, math.min(lightsCV:GetInt(), #candidates) do selected[candidates[i].ent] = true end
+    end
+    return selected[self]
+end
+
 function ENT:Initialize()
-    -- A model is present as an engine anchor; render only custom beams.
-    -- Generous bounds prevent the tall sky column from being view-culled.
-    self:SetRenderBounds(
-        Vector(-2400, -2400, -256),
-        Vector(2400, 2400, 10400)
-    )
+    self:SetRenderBounds(Vector(-5200, -5200, -5200), Vector(5200, 5200, 10400))
+    self._geVisibility = util.GetPixelVisibleHandle()
+    registry.active[self] = true
 end
 
-local function drawCharge(self, t, color)
-    local pos = self:GetPos()
-    local fraction = math.Clamp(t / self.GEFireAt, 0, 1)
-    local spin = t * 0.85
-    local radius = 105 + 48 * math.sin(t * 3) + fraction * 60
-    local alpha = 65 + fraction * 115
+local function visibility(self, pos)
+    -- A handle must not be queried twice in one engine tick (mirrors/RTs).
+    local tick = engine.TickCount()
+    if self._geVisTick ~= tick then
+        self._geVisTick = tick
+        self._geVisible = util.PixelVisible(pos, 24, self._geVisibility) or 0
+    end
+    return self._geVisible or 0
+end
 
-    drawRing(pos, radius, 48, 6 + fraction * 5, tint(color.outer, alpha), spin)
-    drawRing(pos, radius * 1.38, 48, 3 + fraction * 3, tint(color.outer, alpha * 0.65), -spin * 0.75)
-
-    -- Radial charge arcs converge toward the impact point.
+local function charge(self, t, col, alpha, detail, normal, right, forward, radius)
+    local pos = self:GetPos() + normal * 5
+    local f = R.Smooth(t / self.GEFireAt)
+    local segments = detail == 0 and 24 or (detail == 1 and 48 or 72)
+    local spin = t * (0.45 + f * 0.9) + self:GetVisualSeed() % 17
+    local aperture = radius * (0.85 - f * 0.55)
+    ring(pos, right, forward, aperture, segments, 3 + f * 5, tint(col.core, (35 + f * 150) * alpha), spin)
+    -- Six separated arc sectors read as an assembling magnetic aperture.
+    for i = 0, 5 do
+        ring(pos + normal * (8 + f * 18), right, forward, radius * (1.1 - f * 0.25),
+            segments, 3 + f * 3, tint(col.outer, (55 + f * 110) * alpha), -spin,
+            i * segments / 6, math.floor(segments / 9))
+    end
+    ring(pos, right, forward, radius * (1.35 - f * 0.2), segments, 2,
+        tint(col.outer, 45 * alpha), spin * 0.4)
     render.SetMaterial(beamMat)
-    for i = 1, 8 do
-        local a = t * 0.65 + i * (math.pi * 2 / 8)
-        local spread = 220 + 65 * math.sin(t * 1.5 + i)
-        local edge = pos + Vector(math.cos(a) * spread, math.sin(a) * spread, 8)
-        local inner = pos + Vector(math.cos(a) * 32, math.sin(a) * 32, 12)
-        render.DrawBeam(edge, inner, 3 + fraction * 3, t * 0.5, t * 0.5 + 1, tint(color.outer, 45 + fraction * 75))
+    local spokes = detail == 0 and 6 or 10
+    for i = 1, spokes do
+        local a = i / spokes * TAU + spin
+        local dir = right * math.cos(a) + forward * math.sin(a)
+        local edge = pos + dir * radius * (1.0 - f * 0.15)
+        local core = pos + dir * aperture * 0.8 + normal * (10 + f * 75)
+        render.DrawBeam(edge, core, 1.5 + 2 * f, t, t + 1, tint(col.outer, (25 + f * 75) * alpha))
     end
-
-    if glowCV:GetBool() then
-        local sz = 46 + 70 * fraction + 20 * math.sin(t * 11)
-        render.SetMaterial(glowMat)
-        render.DrawSprite(pos + UP * 15, sz, sz, tint(color.outer, 115 + fraction * 80))
+    if not glowCV:GetBool() then return end
+    render.SetMaterial(glowMat)
+    -- Analytic motes: independent of framerate, no particle emitter per frame.
+    local motes = detail == 0 and 8 or (detail == 1 and 16 or 24)
+    for i = 1, motes do
+        local u = (t * (0.48 + f * 0.3) + i / motes) % 1
+        local a = i * 2.399963 + t * 1.8 + u * 3
+        local p = pos + (right * math.cos(a) + forward * math.sin(a)) * radius * (1 - u) ^ 1.4
+            + normal * (12 + u * u * (100 + f * 100))
+        local size = (3 + 7 * u) * (0.6 + f)
+        render.DrawSprite(p, size, size, tint(col.core, math.sin(u * math.pi) * 180 * alpha))
     end
+    local size = 35 + f * 130 + math.sin(t * 21) * 8 * f
+    render.DrawSprite(pos + normal * (15 + f * 65), size, size, tint(col.outer, 180 * alpha))
 end
 
-local function drawColumn(self, t, color)
-    local pos = self:GetPos()
+local function column(self, t, col, alpha, detail, radius)
+    local pos = self:GetPos() + UP * 15
     local height = heightCV:GetFloat()
     local source = pos + UP * height
-    local target = pos + UP * 15
-    local start = t - self.GEFireAt
-    local fadeIn = math.Clamp(start / 0.07, 0, 1)
-    local fadeOut = math.Clamp((self.GEBeamEnd - t) / 0.40, 0, 1)
-    local fade = fadeIn * fadeOut
+    local travel = R.Smooth((t - self.GEFireAt) / (self.GEImpactAt - self.GEFireAt))
+    local target = source + (pos - source) * travel
+    local fade = R.Smooth((t - self.GEFireAt) / 0.035) * R.Smooth((self.GEBeamEnd - t) / 0.4) * alpha
     if fade <= 0 then return end
-
-    local flicker = 1 + math.sin(t * 56) * 0.11 + math.sin(t * 91) * 0.05
-    local width = (82 + 28 * math.sin(t * 17)) * flicker
+    local width = radius * 0.30 * (1 + math.sin(t * 53) * 0.055 + math.sin(t * 87) * 0.025)
     local flow = t * 5
-
-    -- Outer aura, saturated core, and flickering bright center.
     render.SetMaterial(beamMat)
-    render.DrawBeam(source, target, width * 4.0, flow, flow + 10, tint(color.outer, 42 * fade))
-    render.DrawBeam(source, target, width * 2.2, flow * 1.2, flow * 1.2 + 10, tint(color.outer, 145 * fade))
-    render.DrawBeam(source, target, width * 0.80, flow * 1.6, flow * 1.6 + 10, tint(color.core, 240 * fade))
-
-    -- A few unstable electrical strands make the column feel energetic.
+    render.DrawBeam(source, target, width * 4.6, flow, flow + 12, tint(col.outer, 25 * fade))
+    render.DrawBeam(source, target, width * 2.0, flow * 1.2, flow * 1.2 + 12, tint(col.outer, 145 * fade))
+    render.DrawBeam(source, target, width * 0.60, flow * 1.6, flow * 1.6 + 12, tint(col.core, 250 * fade))
+    -- Curved, deterministic filaments instead of five parallel straight lines.
+    local strands, steps = detail + 2, detail == 0 and 6 or (detail == 1 and 12 or 18)
     render.SetMaterial(arcMat)
-    for i = 1, 5 do
-        local a = t * (7 + i) + i * 2.39996
-        local offset = Vector(math.cos(a) * width * 0.55, math.sin(a) * width * 0.55, 0)
-        render.DrawBeam(source + offset, target + offset * 0.25,
-            math.max(6, width * 0.10), flow + i * 0.2, flow + 8 + i * 0.2,
-            tint(color.outer, 110 * fade))
+    for strand = 1, strands do
+        render.StartBeam(steps + 1)
+        for j = 0, steps do
+            local u = j / steps
+            local a = u * TAU * 2.2 + t * (4 + strand) + strand * 2.399963 + self:GetVisualSeed() % 31
+            local radial = math.sin(u * math.pi) * width * (0.9 + 0.2 * math.sin(u * 31 + t * 13))
+            local p = target + (source - target) * u + Vector(math.cos(a), math.sin(a), 0) * radial
+            render.AddBeam(p, math.max(2, width * 0.07), flow + u * 9, tint(col.outer, 160 * fade))
+        end
+        render.EndBeam()
     end
-
+    -- Moving collars show energy flow down the column at medium/high detail.
+    if detail > 0 then
+        for i = 1, detail + 1 do
+            local u = (t * 1.8 + i / (detail + 1)) % 1
+            if u <= travel then
+                ring(source - UP * height * u, Vector(1,0,0), Vector(0,1,0), width * (1.0 + 0.3 * u),
+                    24, 3, tint(col.core, 90 * fade * math.sin(u * math.pi)), t)
+            end
+        end
+    end
     if glowCV:GetBool() then
         render.SetMaterial(glowMat)
-        render.DrawSprite(target, 430 * fade, 430 * fade, tint(color.core, 200 * fade))
-        render.DrawSprite(target, 750 * fade, 750 * fade, tint(color.outer, 68 * fade))
+        local vis = visibility(self, target)
+        render.DrawSprite(target, width * 4, width * 4, tint(col.core, 200 * fade * vis))
+        render.DrawSprite(target, width * 8, width * 8, tint(col.outer, 60 * fade * vis))
     end
 end
 
-local function drawImpact(self, t, color)
+local function impact(self, t, col, alpha, detail, normal, right, forward, radius)
     local elapsed = t - self.GEImpactAt
-    if elapsed < 0 or elapsed > 1.5 then return end
-    local pos = self:GetPos()
-    local wave = math.Clamp(elapsed / 1.25, 0, 1)
-    drawRing(pos, 35 + 1000 * wave, 64, 52 * (1 - wave) + 2,
-        tint(color.core, 200 * (1 - wave) ^ 2), 0)
-    drawRing(pos, 30 + 700 * math.Clamp(elapsed / 0.85, 0, 1),
-        48, math.max(1, 18 * (1 - wave)), tint(color.outer, 155 * (1 - wave)), 0)
-
-    if glowCV:GetBool() and elapsed < 0.62 then
-        local flash = (1 - elapsed / 0.62) ^ 1.7
-        render.SetMaterial(glowMat)
-        render.DrawSprite(pos + UP * 35, 800 * flash, 800 * flash, tint(color.core, 230 * flash))
-        render.DrawSprite(pos + UP * 35, 1150 * flash, 1150 * flash, tint(color.outer, 110 * flash))
-    end
+    if elapsed < 0 then return end
+    local pos = self:GetPos() + normal * 9
+    local segments = detail == 0 and 32 or (detail == 1 and 64 or 96)
+    local wave = math.Clamp(elapsed / 1.35, 0, 1)
+    local expansion = 1 - (1 - wave) ^ 2
+    ring(pos + normal * (18 * wave), right, forward, radius * (0.15 + expansion * 4.2),
+        segments, radius * 0.13 * (1 - wave) + 1, tint(col.core, 200 * (1 - wave) ^ 2 * alpha), 0)
+    local trailing = math.Clamp((elapsed - 0.08) / 1.5, 0, 1)
+    ring(pos, right, forward, radius * (0.2 + (1 - (1 - trailing) ^ 2) * 3.6),
+        segments, 8 + radius * 0.04 * (1 - trailing), tint(col.outer, 110 * (1 - trailing) ^ 3 * alpha), 0)
+    if not glowCV:GetBool() or elapsed > 0.7 then return end
+    local flash = math.exp(-elapsed * 10) + 0.22 * math.exp(-elapsed * 3.5)
+    local vis = visibility(self, pos + normal * 45)
+    render.SetMaterial(glowMat)
+    local size = radius * (2.8 + elapsed * 2)
+    render.DrawSprite(pos + normal * 45, size, size, tint(col.core, 235 * flash * alpha * vis))
+    render.DrawSprite(pos + normal * 45, size * 1.9, size * 1.9, tint(col.outer, 70 * flash * alpha * vis))
+    render.SetMaterial(beamMat)
+    local screenRight = EyeAngles():Right()
+    render.DrawBeam(pos - screenRight * radius * 2.4, pos + screenRight * radius * 2.4,
+        radius * 0.08, 0, 1, tint(col.core, 110 * flash * alpha * vis))
 end
 
 function ENT:DrawTranslucent()
-    if not enabledCV:GetBool() then return end
+    if not enabled:GetBool() or self._geCancelled then return end
     local begin = self:GetStartTime()
     if begin <= 0 then return end
     local t = CurTime() - begin
     if t < 0 or t > self.GELifetime then return end
+    local d, limit = EyePos():DistToSqr(self:GetPos()), distanceCV:GetFloat()
+    if d > limit * limit then return end
+    local alpha = 1 - R.Smooth((math.sqrt(d) / limit - 0.8) / 0.2)
+    local detail = qualityCV:GetInt()
+    if d > 6500 ^ 2 then detail = 0 elseif d > 3500 ^ 2 then detail = math.min(detail, 1) end
+    local normal, right, forward = basis(self:GetGroundNormal())
+    local radius = R.Number(self:GetImpactRadius(), 320, 80, 900)
     local col = palette()
-
-    if t < self.GEFireAt then drawCharge(self, t, col) end
-    if t >= self.GEFireAt and t <= self.GEBeamEnd then drawColumn(self, t, col) end
-    if t >= self.GEImpactAt then drawImpact(self, t, col) end
+    if t < self.GEFireAt then charge(self, t, col, alpha, detail, normal, right, forward, radius) end
+    if t >= self.GEFireAt and t <= self.GEBeamEnd then column(self, t, col, alpha, detail, radius) end
+    if t >= self.GEImpactAt then impact(self, t, col, alpha, detail, normal, right, forward, radius) end
+    -- No blend/depth/stencil/lighting overrides are used by this renderer.
 end
 
 function ENT:Think()
-    if not enabledCV:GetBool() or not lightCV:GetBool() then return end
+    if not enabled:GetBool() or not lightCV:GetBool() or self._geCancelled then retireLight(self) return end
     local begin = self:GetStartTime()
-    if begin <= 0 then return end
     local t = CurTime() - begin
-    if t < self.GEFireAt or t > self.GEBeamEnd + 0.25 then return end
-    local col = palette()
-    local impactFlash = t >= self.GEImpactAt and (1 - math.Clamp((t - self.GEImpactAt) / 0.7, 0, 1)) or 0
-    local strength = math.Clamp(0.9 + 1.8 * impactFlash, 0, 3)
-    local dynamic = DynamicLight(self:EntIndex())
-    if not dynamic then return end
-    dynamic.pos = self:GetPos() + UP * 110
-    dynamic.r = col.outer[1]
-    dynamic.g = col.outer[2]
-    dynamic.b = col.outer[3]
-    dynamic.brightness = strength
-    dynamic.decay = 1200
-    dynamic.size = math.Clamp(430 + self:GetImpactRadius() * 2.2, 450, 1700)
-    dynamic.dietime = CurTime() + 0.12
+    if begin <= 0 or t < 0 or t > self.GEBeamEnd + 0.7 or not lightSelected(self) then retireLight(self) return end
+    if (self._geNextLight or 0) > CurTime() then return end
+    self._geNextLight = CurTime() + 0.05
+    local col, f = palette(), R.Smooth(t / self.GEFireAt)
+    local elapsed = t - self.GEImpactAt
+    local flash = elapsed >= 0 and math.exp(-elapsed * 5.5) or 0
+    local beam = t >= self.GEFireAt and R.Smooth((self.GEBeamEnd + 0.7 - t) / 0.9) or 0
+    local light = DynamicLight(self:EntIndex())
+    if not light then return end
+    local normal = self:GetGroundNormal()
+    light.pos = self:GetPos() + normal * 100
+    light.r = col.outer[1] + (col.core[1] - col.outer[1]) * flash
+    light.g = col.outer[2] + (col.core[2] - col.outer[2]) * flash
+    light.b = col.outer[3] + (col.core[3] - col.outer[3]) * flash
+    light.brightness = (t < self.GEFireAt and f * f * 0.9 or beam * 1.8) + flash * 2.5
+    light.size = math.Clamp(self:GetImpactRadius() * (1.3 + f + flash * 1.3), 200, 1800)
+    light.decay, light.dietime = 2000, CurTime() + 0.15
     self._geLightActive = true
 end
 
 function ENT:OnRemove()
-    if not self._geLightActive then return end
-    local dynamic = DynamicLight(self:EntIndex())
-    if dynamic then dynamic.dietime = CurTime(); dynamic.size = 0 end
+    registry.active[self] = nil
+    retireLight(self)
 end
+hook.Add("PostCleanupMap", "GE.Railgun.Cleanup", function()
+    for ent in pairs(registry.active) do
+        if IsValid(ent) then ent._geCancelled = true; retireLight(ent) end
+    end
+end)

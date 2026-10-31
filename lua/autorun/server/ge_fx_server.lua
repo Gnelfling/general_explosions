@@ -10,7 +10,9 @@ util.AddNetworkString("ge_fx_ready_v2")
 GEFXServer = GEFXServer or {}
 local FX = GEFXServer
 FX.craters = FX.craters or {}
+if FX.craters[1] and not FX.craters[1].id then FX.craters = {} end -- v1 hot reload
 FX.serial = FX.serial or 0
+FX.generation = FX.generation or 0
 local maxCraterHistory = CreateConVar("ge_fx_crater_history", "12", FCVAR_ARCHIVE, "How many visual crater records to sync", 1, 32)
 
 local function sendRecord(c)
@@ -56,6 +58,7 @@ function FX.Impact(pos, radius, depth, opts)
 end
 
 function FX.Clear()
+    FX.generation = FX.generation + 1
     FX.craters = {}
     net.Start("ge_fx_clear_v2")
     net.Broadcast()
@@ -97,9 +100,10 @@ concommand.Add("ge_fx_showcase", function(ply, _, args)
     end
     local radius = math.Clamp(tonumber(args[1]) or 200, 30, 600)
     local offsets = { Vector(0, 0, 0), Vector(210, 85, 0), Vector(-200, -75, 0) }
+    local generation = FX.generation
     for i, offset in ipairs(offsets) do
         timer.Simple((i - 1) * 1.3, function()
-            if not IsValid(ply) then return end
+            if not IsValid(ply) or generation ~= FX.generation then return end
             local sample = center + offset
             local trace = util.TraceLine({
                 start = sample + Vector(0, 0, 400),

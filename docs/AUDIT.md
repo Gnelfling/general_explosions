@@ -10,13 +10,13 @@ the generated manifest, and the headers of all four audio assets before edits.
   compatibility requires a 16-bit deliverable. Stereo cues also prevent useful
   positional attenuation. Normalize the three referenced cues to mono 16-bit
   PCM without trimming, resampling, or moving their scheduled starts.
-- Audio lengths are 3.135s charge, 5.085s fire, 13.376s explosion; the old guide's
+- Audio lengths are 3.135s charge, 5.085s fire, 13.377s explosion; the old guide's
   3/1/5-second durations were inaccurate. The alternate fire(1) is unused.
 - Impact packets had no timestamp or identifier. Latency restarted the volume,
   and a joining client received only crater history after an arbitrary delay.
-- DynamicLight fields used capitalized names instead of the documented
-  `size`, `decay`, `dietime`; illumination could fail. Lighting ignored the
-  master visual toggle and removal had no explicit light retirement.
+- Lighting ignored the master visual toggle and removal had no explicit light
+  retirement. API verification confirmed DynamicLight members are case
+  insensitive; the original capitalization is **not** a runtime bug.
 - Volume instances were deleted when rendering was disabled. Culled instances
   still selected and loaded frame textures. No map-cleanup hook cleared volumes.
 - Crater generation traced the same center once per segment, added noisy,

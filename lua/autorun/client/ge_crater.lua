@@ -16,6 +16,7 @@ local maximum = CreateClientConVar("ge_crater_max", "12", true, false, "Maximum 
 local distance = CreateClientConVar("ge_crater_distance", "12000", true, false, "Crater draw distance (Source units)", 1000, 50000)
 local showRim = CreateClientConVar("ge_crater_rim", "1", true, false, "Draw raised crater rim", 0, 1)
 local showBlanket = CreateClientConVar("ge_crater_blanket", "1", true, false, "Draw scorched surroundings", 0, 1)
+local heatCV = CreateClientConVar("ge_crater_heat", "1", true, false, "Cooling impact fissures", 0, 1)
 local UP = Vector(0, 0, 1)
 local maskMaterial = CreateMaterial("ge_crater_stencil_v1", "UnlitGeneric", {
     ["$basetexture"] = "models/debug/debugwhite", ["$nocull"] = "1"
@@ -27,6 +28,10 @@ local soilMaterial = CreateMaterial("ge_crater_soil_v1", "UnlitGeneric", {
 local fadeMaterial = CreateMaterial("ge_crater_fade_v1", "UnlitGeneric", {
     ["$basetexture"] = "models/debug/debugwhite", ["$vertexcolor"] = "1",
     ["$vertexalpha"] = "1", ["$translucent"] = "1", ["$nocull"] = "1"
+})
+local heatMaterial = CreateMaterial("ge_crater_heat_v1", "UnlitGeneric", {
+    ["$basetexture"] = "models/debug/debugwhite", ["$vertexcolor"] = "1",
+    ["$vertexalpha"] = "1", ["$additive"] = "1", ["$nocull"] = "1"
 })
 
 local function clamp(v, low, high) return math.max(low, math.min(high, v)) end
@@ -67,10 +72,12 @@ local function sampleGround(x, y, baseZ)
 end
 
 local function vertex(q, mode, fade)
-    mesh.Position(mode == "mask" and q.mask or q.pos)
+    mesh.Position(mode == "mask" and q.mask or (mode == "heat" and q.pos + UP * 0.25 or q.pos))
     mesh.TexCoord(0, q.u, q.v)
     if mode == "mask" then
         mesh.Color(255, 255, 255, 255)
+    elseif mode == "heat" then
+        mesh.Color(255, 97, 25, q.heat)
     else
         mesh.Color(q.r, q.g, q.b, fade and q.a or 255)
     end
@@ -176,7 +183,9 @@ local function build(c)
                 r = clamp(math.floor(base[1] * shade * char * bright), 0, 255),
                 g = clamp(math.floor(base[2] * shade * char * bright), 0, 255),
                 b = clamp(math.floor(base[3] * shade * char * bright), 0, 255),
-                a = clamp(math.floor(a), 0, 255)
+                a = clamp(math.floor(a), 0, 255),
+                heat = clamp(math.floor(255 * fissure * smooth(x / 0.35)
+                    * (1 - smooth((x - 0.72) / 0.5))), 0, 255)
             }
         end
         rows[i] = row
@@ -196,6 +205,7 @@ local function build(c)
     if not flat then
         add("rimMesh", inner + 1, split, "soil", false)
         add("blanketMesh", split, #stations, "soil", true)
+        add("heatMesh", 1, split, "heat", true)
     end
     if flat then
         -- A scorch-only mark should not clear the underlying world's depth.
@@ -222,9 +232,11 @@ function CR.Add(pos, radius, depth, opts)
     depth = GERuntime.Number(depth, radius * 0.24, 0, radius * 0.70)
     local c = {
         pos = Vector(pos.x, pos.y, pos.z), radius = radius,
-        depth = depth, rim = clamp(tonumber(opts.rim) or radius * 0.11, 0, radius * 0.30),
-        blanket = clamp(tonumber(opts.blanket) or radius * 2.7, radius * 1.9, radius * 4),
-        glass = opts.glass == true, seed = math.floor(tonumber(opts.seed) or math.random(1, 999999))
+        depth = depth, rim = GERuntime.Number(opts.rim, radius * 0.11, 0, radius * 0.30),
+        blanket = GERuntime.Number(opts.blanket, radius * 2.7, radius * 1.9, radius * 4),
+        glass = opts.glass == true,
+        seed = math.floor(GERuntime.Number(opts.seed, math.random(1, 999999), 1, 16777214)),
+        created = GERuntime.Number(opts.time, CurTime(), 0, CurTime())
     }
     local ok, err = pcall(build, c)
     if not ok then
@@ -279,6 +291,13 @@ local function drawOne(c)
         render.SetMaterial(fadeMaterial)
         c.blanketMesh:Draw()
     end
+    local heat = 1 - smooth((CurTime() - c.created) / 6)
+    if heatCV:GetBool() and heat > 0 and c.heatMesh then
+        render.SetBlend(heat * heat * 0.85)
+        render.SetMaterial(heatMaterial)
+        c.heatMesh:Draw()
+        render.SetBlend(1)
+    end
 end
 
 hook.Add("PostDrawOpaqueRenderables", "GE.Crater.Render", function(depthPass, sky)
@@ -293,6 +312,7 @@ hook.Add("PostDrawOpaqueRenderables", "GE.Crater.Render", function(depthPass, sk
             render.OverrideColorWriteEnable(false, false)
             render.OverrideAlphaWriteEnable(false, false)
             render.SetStencilEnable(false)
+            render.SetBlend(1)
             if not ok then
                 c.failed = true
                 ErrorNoHalt("[GE] Crater render failed: " .. tostring(err) .. "\n")

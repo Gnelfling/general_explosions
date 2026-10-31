@@ -16,6 +16,7 @@ function V:Dot(b) return self.x*b.x+self.y*b.y+self.z*b.z end
 function V:Cross(b) return Vector(self.y*b.z-self.z*b.y,self.z*b.x-self.x*b.z,self.x*b.y-self.y*b.x) end
 function V:DistToSqr(b) return (self-b):LengthSqr() end
 function Color(r,g,b,a) return {r=r,g=g,b=b,a=a or 255} end
+function Angle(p,y,r) return {p=p,y=y,r=r} end
 math.Clamp = function(v,lo,hi) return math.max(lo,math.min(hi,v)) end
 CLIENT,SERVER = false,true
 NOW=100
@@ -39,7 +40,8 @@ CreateClientConVar=CreateConVar
 hook={callbacks={}}
 function hook.Add(event,name,fn) hook.callbacks[event..':'..name]=fn end
 function hook.Remove(event,name) hook.callbacks[event..':'..name]=nil end
-concommand={Add=function() end}
+concommand={callbacks={}}
+function concommand.Add(name,fn) concommand.callbacks[name]=fn end
 file={Exists=function() return true end}
 resource={AddFile=function() end}
 sound={calls={}}
@@ -58,8 +60,8 @@ game={SinglePlayer=function() return false end}
 ents={FindByClass=function() return {} end}
 timer={Simple=function(_,fn) fn() end}
 ENT={}
-function ENT:NetworkVar(_,_,name)
-    self['Get'..name]=function(e) return e[name] or 0 end
+function ENT:NetworkVar(kind,slot,name)
+    self['Get'..name]=function(e) return e[name] or (kind=='Vector' and Vector() or 0) end
     self['Set'..name]=function(e,v) e[name]=v end
 end
 function ENT:GetPos() return Vector(0,0,3) end
