@@ -6,9 +6,11 @@ The full VAC addon is not required or loaded; no VAC globals are created.
 
 ## Install
 
-Merge the updated Lua overlay into the existing addon, preserving your working
-OpenVDB manifest, textures, shaders and custom audio. Separately extract the
-local `vac-impact-resources.zip` into that same folder on server and clients.
+Download the existing PR branch ZIP from GitHub. Merge its updated Lua scripts
+and the seven resources listed below into the existing addon on server and
+clients. Preserve your working OpenVDB ground_explosion.lua manifest, all local
+VTF/VMT frames, GE shaders and custom audio. Do not replace the entire addon
+folder with the downloaded folder.
 Restart both after installing compiled shaders. The seven extracted files are:
 
 - `shaders/fxc/vac_impactvol_ps30.vcs` (3182 bytes)
@@ -19,8 +21,9 @@ Restart both after installing compiled shaders. The seven extracted files are:
 - `materials/vac/fx/nukevol/noise.vtf`
 - `lua/general_explosions/data/vac_impact.lua`
 
-These resources are extracted from the supplied gmpublisher folder, not bundled
-in the public repository or normal update overlay. Respect ownership/permissions
+At the user's explicit request, these seven resources are now tracked in the
+GitHub branch and included in its single ZIP download. The script-only update
+overlay still excludes binary/generated assets. Respect ownership/permissions
 when distributing external assets. The six binaries are unchanged; generated
 metadata is converted to a returned table without executing VAC code.
 

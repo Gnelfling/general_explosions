@@ -43,7 +43,7 @@ The checked-in manifest contains 188 texture records (0–187). Their source dat
 ## Orbital railgun cinematic entity
 
 Optional user-supplied VAC impact shader integration is available alongside
-the original OpenVDB renderer. It requires a separate local resource pack;
+the original OpenVDB renderer. Its required resources are now included in the GitHub branch ZIP;
 see [installation and limitations](docs/VAC_IMPACT.md).
 
 Latest controls: `ge_railgun_beam_width 1.75` (client, 0.5–3), `ge_railgun_shake 1`, `ge_railgun_shake_strength 8`, `ge_railgun_damage 150` (server, 0–1000). Damage occurs once at 3.2 seconds within the impact radius (320 by default); damage 0 restores cinematic-only operation. Generic crater/volume/FX previews remain cosmetic.
