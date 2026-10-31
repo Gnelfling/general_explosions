@@ -45,10 +45,35 @@ local function setup()
         if not ok or not result or not result.frames or #result.frames == 0 then
             return false, "Could not load non-empty volume manifest"
         end
+        if not GERuntime.Finite(result.fps or 24) or (result.fps or 24) <= 0 then
+            return false, "Invalid manifest FPS"
+        end
+        result.fps = result.fps or 24
+        local previous = -1
+        for _, frame in ipairs(result.frames) do
+            if not GERuntime.Finite(frame.frame) or frame.frame <= previous then
+                return false, "Manifest frames must be strictly ordered"
+            end
+            previous = frame.frame
+            if not frame.empty then
+                if type(frame.texture) ~= "string" or type(frame.min) ~= "table" or type(frame.max) ~= "table"
+                    or not GERuntime.Finite(frame.density_scale) or not GERuntime.Finite(frame.flames_scale) then
+                    return false, "Invalid volume frame data"
+                end
+                for axis = 1, 3 do
+                    if not GERuntime.Finite(frame.min[axis]) or not GERuntime.Finite(frame.max[axis])
+                        or frame.max[axis] <= frame.min[axis] then return false, "Invalid volume bounds" end
+                end
+            end
+        end
         GE.manifest = result
     end
     if not GE.material then
-        local initial = GE.manifest.frames[1].texture
+        local initial
+        for _, frame in ipairs(GE.manifest.frames) do
+            if not frame.empty then initial = frame.texture break end
+        end
+        if not initial then return false, "Manifest contains only empty frames" end
         GE.material = CreateMaterial("ge_volume_raymarch_v1", "screenspace_general", {
             ["$pixshader"] = "ge_volume_ps30",
             ["$vertexshader"] = "ge_volume_vs30",
@@ -137,30 +162,17 @@ local function setFrame(frame)
     return true
 end
 
-local function selectFrame(elapsed, looping)
-    local frames = GE.manifest.frames
-    if #frames == 0 then return nil end
-    local fps = (GE.manifest.fps or 24) * playbackSpeed:GetFloat()
-    local startFrame, endFrame = frames[1].frame, frames[#frames].frame
-    local span = math.max(endFrame - startFrame + 1, 1)
-    local offset = math.floor(math.max(elapsed, 0) * fps)
-    if not looping and offset >= span then return nil end
-    local desired = startFrame + (looping and (offset % span) or offset)
-    local current = frames[1]
-    for i = 2, #frames do
-        if frames[i].frame > desired then break end
-        current = frames[i]
-    end
-    return current
-end
-
 local function draw(instance)
-    if not enabled:GetBool() or not instance then return false end
+    if not instance then return false end
     local ok = setup()
     if not ok then return false end
 
-    local frame = selectFrame(CurTime() - instance.start, instance.loop == true)
-    if not frame then return false end
+    local frame, alive = GERuntime.Frame(GE.manifest, CurTime() - instance.start,
+        playbackSpeed:GetFloat(), instance.loop == true)
+    if not alive then return false end
+    if not enabled:GetBool() or not frame then return true end
+    -- Cull before touching frame materials; distant sequences still age.
+    if EyePos():DistToSqr(instance.origin) > drawDistance:GetFloat() ^ 2 then return true end
     if not setFrame(frame) then return true end
 
     local unitScale = scale:GetFloat() * instance.multiplier
@@ -204,13 +216,16 @@ local function draw(instance)
     return true
 end
 
-function GE.Spawn(origin, multiplier)
-    if not isvector(origin) then return false, "invalid world position" end
+function GE.Spawn(origin, multiplier, startTime)
+    if not GERuntime.Position(origin) then return false, "invalid world position" end
     local ok, reason = setup()
     if not ok then return false, reason end
+    startTime = GERuntime.Number(startTime, CurTime(), 0, CurTime())
+    local _, alive = GERuntime.Frame(GE.manifest, CurTime() - startTime, playbackSpeed:GetFloat(), false)
+    if not alive then return false, "animation expired" end
     table.insert(GE.instances, {
         origin = Vector(origin.x, origin.y, origin.z),
-        start = CurTime(), multiplier = math.Clamp(tonumber(multiplier) or 1, 0.1, 20),
+        start = startTime, multiplier = GERuntime.Number(multiplier, 1, 0.1, 20),
         loop = false
     })
     while #GE.instances > maxInstances:GetInt() do table.remove(GE.instances, 1) end
@@ -221,11 +236,23 @@ function GE.ClearInstances()
     GE.instances = {}
 end
 
+hook.Add("PostCleanupMap", "GE.Volume.Cleanup", function()
+    GE.ClearInstances()
+    GE.preview = nil
+end)
+
 hook.Add("PostDrawTranslucentRenderables", "GE.Volume.Render", function(depth, sky)
     if sky or depth then return end
     draw(GE.preview)
+    local eye = EyePos()
+    local ordered = {}
+    for _, instance in ipairs(GE.instances) do ordered[#ordered + 1] = instance end
+    table.sort(ordered, function(a, b)
+        return eye:DistToSqr(a.origin) > eye:DistToSqr(b.origin)
+    end)
+    for _, instance in ipairs(ordered) do instance.alive = draw(instance) end
     for i = #GE.instances, 1, -1 do
-        if not draw(GE.instances[i]) then table.remove(GE.instances, i) end
+        if not GE.instances[i].alive then table.remove(GE.instances, i) end
     end
 end)
 

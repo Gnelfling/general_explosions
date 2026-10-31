@@ -145,7 +145,7 @@ function ENT:DrawTranslucent()
 end
 
 function ENT:Think()
-    if not lightCV:GetBool() then return end
+    if not enabledCV:GetBool() or not lightCV:GetBool() then return end
     local begin = self:GetStartTime()
     if begin <= 0 then return end
     local t = CurTime() - begin
@@ -160,7 +160,14 @@ function ENT:Think()
     dynamic.g = col.outer[2]
     dynamic.b = col.outer[3]
     dynamic.brightness = strength
-    dynamic.Decay = 1200
-    dynamic.Size = math.Clamp(430 + self:GetImpactRadius() * 2.2, 450, 1700)
-    dynamic.DieTime = CurTime() + 0.12
+    dynamic.decay = 1200
+    dynamic.size = math.Clamp(430 + self:GetImpactRadius() * 2.2, 450, 1700)
+    dynamic.dietime = CurTime() + 0.12
+    self._geLightActive = true
+end
+
+function ENT:OnRemove()
+    if not self._geLightActive then return end
+    local dynamic = DynamicLight(self:EntIndex())
+    if dynamic then dynamic.dietime = CurTime(); dynamic.size = 0 end
 end

@@ -119,8 +119,8 @@ def export_frame(vdb, path: Path, target: Path, frame: int, resolution: int) -> 
     density, flames = grids.get("density"), grids.get("flames")
     bounds = active_bounds({"density": density, "flames": flames})
     if bounds is None:
-        print(f"[GE] Frame {frame}: empty density and flames, skipped")
-        return None
+        print(f"[GE] Frame {frame}: empty density and flames, timing retained")
+        return {"frame": frame, "empty": True}
     mn, mx = bounds
     # Index-space sampling currently assumes that smoke and flames share a
     # matching transform; fail explicitly if the voxel spacing differs.
@@ -164,6 +164,9 @@ def lua_manifest(frames: list[dict], fps: float, anchor: tuple[float, float, flo
              "    anchor = {" + ", ".join(f"{v:.8g}" for v in anchor) + "},",
              "    frames = {"]
     for f in frames:
+        if f.get("empty"):
+            lines.append(f'        {{frame={f["frame"]}, empty=true}},')
+            continue
         fmt = lambda seq: "{" + ", ".join(str(v) for v in seq) + "}"
         lines.append(
             f'        {{frame={f["frame"]}, texture="{f["texture"]}", '
@@ -185,7 +188,7 @@ def main() -> int:
     p.add_argument("--fps", type=float, default=24.0)
     p.add_argument("--resolution", type=int, default=128, choices=(32, 64, 128, 256))
     args = p.parse_args(args_in)
-    if args.first < 0 or args.last < args.first or args.step < 1 or args.fps <= 0:
+    if args.first < 0 or args.last < args.first or args.step < 1 or not math.isfinite(args.fps) or args.fps <= 0:
         p.error("Use nonnegative first <= last, step >= 1, fps > 0")
     try:
         import openvdb

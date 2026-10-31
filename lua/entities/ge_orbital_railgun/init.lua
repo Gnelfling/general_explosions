@@ -18,6 +18,10 @@ local maxActiveCV = CreateConVar(
 
 local SOUND_DIR = "general_explosions/railgun/"
 local warnedSound = {}
+for _, name in ipairs({ "railgun_charge.wav", "railgun_fire.wav", "railgun_explosion.wav" }) do
+    local path = "sound/" .. SOUND_DIR .. name
+    if file.Exists(path, "GAME") then resource.AddFile(path) end
+end
 
 local function cue(pos, name)
     local path = SOUND_DIR .. name
@@ -62,10 +66,15 @@ local function spawnVisual(ply, tr, className)
     end
     ent:SetPos(tr.HitPos + Vector(0, 0, 3))
     ent:SetAngles(Angle(0, 0, 0))
+    ent:SetGroundNormal(tr.HitNormal)
     ent:Spawn()
     ent:Activate()
-    ent:SetStartTime(CurTime() + 0.45)
-    ent:SetImpactRadius(radiusCV:GetFloat())
+    ent:SetCreator(ply)
+    undo.Create("Orbital Railgun (Visual)")
+    undo.AddEntity(ent)
+    undo.SetPlayer(ply)
+    undo.Finish()
+    ply:AddCleanup("effects", ent)
     return ent
 end
 
@@ -82,6 +91,8 @@ function ENT:Initialize()
     self:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     self:SetStartTime(CurTime() + 0.45)
     self:SetImpactRadius(radiusCV:GetFloat())
+    self:SetVisualSeed(math.random(1, 16777214))
+    if self:GetGroundNormal():LengthSqr() < 0.5 then self:SetGroundNormal(Vector(0, 0, 1)) end
     self._gePlayedCharge = false
     self._gePlayedFire = false
     self._geDidImpact = false
@@ -95,6 +106,7 @@ end
 
 function ENT:Think()
     local t = CurTime() - self:GetStartTime()
+    if t >= self.GELifetime then self:Remove() return end
     if t < 0 then
         self:NextThink(CurTime())
         return true
@@ -115,7 +127,10 @@ function ENT:Think()
         local origin = self:GetPos() - Vector(0, 0, 3)
         local radius = self:GetImpactRadius()
         if GEFXServer and GEFXServer.Impact then
-            GEFXServer.Impact(origin, radius, radius * 0.24)
+            GEFXServer.Impact(origin, radius, radius * 0.24, {
+                time = self:GetStartTime() + self.GEImpactAt,
+                seed = self:GetVisualSeed(), normal = self:GetGroundNormal()
+            })
         else
             ErrorNoHalt("[GE] Railgun: ge_fx_server.lua is missing; volumetric impact not spawned.\n")
         end
@@ -123,11 +138,6 @@ function ENT:Think()
             util.ScreenShake(origin, 4, 6, 1.2, math.min(radius * 7, 3000))
         end
         cue(origin, "railgun_explosion.wav")
-    end
-
-    if t >= self.GELifetime then
-        self:Remove()
-        return
     end
 
     self:NextThink(CurTime())
