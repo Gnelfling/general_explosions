@@ -10,11 +10,18 @@ local GE = GEVolume
 hook.Remove("PostDrawTranslucentRenderables", "GE.Volume.Render")
 
 local enabled = CreateClientConVar("ge_volume_enabled", "1", true, false, "Draw the GroundExplosionVDB volume", 0, 1)
-local opacity = CreateClientConVar("ge_volume_opacity", "11", true, false, "Volume extinction", 0, 40)
-local steps = CreateClientConVar("ge_volume_steps", "64", true, false, "GPU ray-march steps", 8, 96)
-local scale = CreateClientConVar("ge_volume_unit_scale", "4", true, false, "GMod units per OpenVDB voxel", 0.1, 50)
-local ambient = CreateClientConVar("ge_volume_ambient", "0.32", true, false, "Ambient brightness", 0, 1)
-local fireGain = CreateClientConVar("ge_volume_fire", "1.6", true, false, "Fire emission strength", 0, 8)
+local opacity = CreateClientConVar("ge_volume_opacity", "100", true, false, "Volume extinction", 0, 200)
+local steps = CreateClientConVar("ge_volume_steps", "40", true, false, "GPU ray-march steps", 8, 96)
+local scale = CreateClientConVar("ge_volume_unit_scale", "8", true, false, "GMod units per OpenVDB voxel", 0.1, 50)
+local ambient = CreateClientConVar("ge_volume_ambient", "0.18", true, false, "Ambient brightness", 0, 1)
+local fireGain = CreateClientConVar("ge_volume_fire", "0.15", true, false, "Fire emission strength", 0, 8)
+
+local playbackSpeed = CreateClientConVar("ge_volume_speed", "1", true, false, "Animation playback multiplier", 0.1, 3)
+local smokeR = CreateClientConVar("ge_volume_smoke_r", "0.40", true, false, "Smoke red tint", 0, 2)
+local smokeG = CreateClientConVar("ge_volume_smoke_g", "0.42", true, false, "Smoke green tint", 0, 2)
+local smokeB = CreateClientConVar("ge_volume_smoke_b", "0.44", true, false, "Smoke blue tint", 0, 2)
+local maxInstances = CreateClientConVar("ge_volume_max_instances", "3", true, false, "Maximum simultaneous one-shot volumes", 1, 8)
+local drawDistance = CreateClientConVar("ge_volume_draw_distance", "16000", true, false, "Volume draw distance in Source units", 1000, 60000)
 
 local dataPath = "general_explosions/data/ground_explosion.lua"
 local VERTEX_SHADER = "shaders/fxc/ge_volume_vs30.vcs"
@@ -23,11 +30,12 @@ local PIXEL_SHADER = "shaders/fxc/ge_volume_ps30.vcs"
 GE.manifest = GE.manifest or nil
 GE.material = GE.material or nil
 GE.preview = GE.preview or nil
+GE.instances = GE.instances or {}
 GE.lastTexture = nil
 
 local function setup()
     if not file.Exists(VERTEX_SHADER, "GAME") or not file.Exists(PIXEL_SHADER, "GAME") then
-        return false, "Missing compiled .vcs shader(s) in garrysmod/shaders/fxc"
+        return false, "Missing compiled .vcs shader(s) in shaders/fxc"
     end
     if not file.Exists("lua/" .. dataPath, "GAME") then
         return false, "Missing generated Lua manifest: " .. dataPath
@@ -129,14 +137,15 @@ local function setFrame(frame)
     return true
 end
 
-local function selectFrame(elapsed)
+local function selectFrame(elapsed, looping)
     local frames = GE.manifest.frames
-    if #frames == 1 then return frames[1] end
-    local fps = GE.manifest.fps or 24
-    local desired = frames[1].frame + math.floor(elapsed * fps)
-    if desired > frames[#frames].frame then
-        desired = frames[1].frame + ((desired - frames[1].frame) % (frames[#frames].frame - frames[1].frame + 1))
-    end
+    if #frames == 0 then return nil end
+    local fps = (GE.manifest.fps or 24) * playbackSpeed:GetFloat()
+    local startFrame, endFrame = frames[1].frame, frames[#frames].frame
+    local span = math.max(endFrame - startFrame + 1, 1)
+    local offset = math.floor(math.max(elapsed, 0) * fps)
+    if not looping and offset >= span then return nil end
+    local desired = startFrame + (looping and (offset % span) or offset)
     local current = frames[1]
     for i = 2, #frames do
         if frames[i].frame > desired then break end
@@ -145,21 +154,22 @@ local function selectFrame(elapsed)
     return current
 end
 
-local function draw()
-    if not enabled:GetBool() or not GE.preview then return end
+local function draw(instance)
+    if not enabled:GetBool() or not instance then return false end
     local ok = setup()
-    if not ok then return end
+    if not ok then return false end
 
-    local frame = selectFrame(CurTime() - GE.preview.start)
-    if not frame or not setFrame(frame) then return end
+    local frame = selectFrame(CurTime() - instance.start, instance.loop == true)
+    if not frame then return false end
+    if not setFrame(frame) then return true end
 
-    local unitScale = scale:GetFloat() * GE.preview.multiplier
+    local unitScale = scale:GetFloat() * instance.multiplier
     local mn, mx = frame.min, frame.max
     -- The animation uses one fixed VDB-space anchor, so the smoke doesn't
     -- snap back to its own bounding-box centre when it expands or rises.
     local center = GE.manifest.anchor or {0, 0, 0}
     local eye = EyePos()
-    local loc = (eye - GE.preview.origin) / unitScale
+    local loc = (eye - instance.origin) / unitScale
     local camera = Vector(
         (loc.x + center[1] - mn[1]) / math.max(mx[1] - mn[1], 1),
         (loc.y + center[2] - mn[2]) / math.max(mx[2] - mn[2], 1),
@@ -182,18 +192,41 @@ local function draw()
     m:SetFloat("$c2_y", frame.flames_scale)
     m:SetFloat("$c2_z", fireGain:GetFloat())
     m:SetFloat("$c2_w", ambient:GetFloat())
-    m:SetFloat("$c3_x", 0.40)
-    m:SetFloat("$c3_y", 0.42)
-    m:SetFloat("$c3_z", 0.44)
+    m:SetFloat("$c3_x", smokeR:GetFloat())
+    m:SetFloat("$c3_y", smokeG:GetFloat())
+    m:SetFloat("$c3_z", smokeB:GetFloat())
     m:SetFloat("$c3_w", 1.0)
 
-    render.SetMaterial(m)
-    drawBox(frame, center, GE.preview.origin, unitScale, camera, inside)
+    if EyePos():DistToSqr(instance.origin) <= drawDistance:GetFloat() ^ 2 then
+        render.SetMaterial(m)
+        drawBox(frame, center, instance.origin, unitScale, camera, inside)
+    end
+    return true
+end
+
+function GE.Spawn(origin, multiplier)
+    if not isvector(origin) then return false, "invalid world position" end
+    local ok, reason = setup()
+    if not ok then return false, reason end
+    table.insert(GE.instances, {
+        origin = Vector(origin.x, origin.y, origin.z),
+        start = CurTime(), multiplier = math.Clamp(tonumber(multiplier) or 1, 0.1, 20),
+        loop = false
+    })
+    while #GE.instances > maxInstances:GetInt() do table.remove(GE.instances, 1) end
+    return true
+end
+
+function GE.ClearInstances()
+    GE.instances = {}
 end
 
 hook.Add("PostDrawTranslucentRenderables", "GE.Volume.Render", function(depth, sky)
     if sky or depth then return end
-    draw()
+    draw(GE.preview)
+    for i = #GE.instances, 1, -1 do
+        if not draw(GE.instances[i]) then table.remove(GE.instances, i) end
+    end
 end)
 
 concommand.Add("ge_volume_preview", function(_, _, args)
@@ -206,10 +239,22 @@ concommand.Add("ge_volume_preview", function(_, _, args)
     local multiplier = math.Clamp(tonumber(args[2]) or 1, 0.1, 20)
     GE.preview = {
         origin = EyePos() + EyeAngles():Forward() * distance,
-        start = CurTime(), multiplier = multiplier
+        start = CurTime(), multiplier = multiplier, loop = true
     }
     print("[GE] Previewing GroundExplosionVDB (visual only).")
 end, nil, "Preview animated VDB smoke in front of your camera")
+
+concommand.Add("ge_volume_spawn", function(_, _, args)
+    local d = math.Clamp(tonumber(args[1]) or 1400, 100, 20000)
+    local mult = math.Clamp(tonumber(args[2]) or 1, 0.1, 20)
+    local ok, reason = GE.Spawn(EyePos() + EyeAngles():Forward() * d, mult)
+    print(ok and "[GE] One-shot volume spawned." or "[GE] " .. tostring(reason))
+end)
+
+concommand.Add("ge_volume_clear", function()
+    GE.ClearInstances()
+    print("[GE] One-shot volumes cleared.")
+end)
 
 concommand.Add("ge_volume_stop", function()
     GE.preview = nil
@@ -220,4 +265,5 @@ concommand.Add("ge_volume_status", function()
     local ok, reason = setup()
     print("[GE] " .. (ok and "Shader + manifest files found" or tostring(reason)))
     if ok then print("[GE] Loaded frame records: " .. #GE.manifest.frames) end
+    print("[GE] Active one-shot volumes: " .. #GE.instances)
 end)
