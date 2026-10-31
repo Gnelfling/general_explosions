@@ -1,0 +1,2 @@
+// General Explosions pixel shader build entrypoint.
+#include "ge_volume_ps30.hlsl"
