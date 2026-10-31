@@ -2,7 +2,7 @@
 
 An original visual-effects-only addon using a real 200-frame GroundExplosionVDB animation, Shader Model 3.0 volume raymarching, and custom 3D VTF textures.
 
-**Status:** Smoke, fire and the full animation have been verified in-game by the project owner. The crater, impact accents and multiplayer synchronization added afterward are new code and still require testing in GMod. No gameplay damage, projectiles or weapons are implemented.
+**Status:** The owner previously verified the volumetric smoke/fire animation in-game. The upgraded railgun, crater and synchronization pass automated code checks but still require the [GMod acceptance matrix](docs/RAILGUN.md#required-in-game-acceptance-matrix-not-yet-executed). The railgun now applies configurable explosion damage (150 by default); use ge_railgun_damage 0 for cinematic mode. No projectile or BSP destruction is added.
 
 ## Features
 
@@ -12,8 +12,10 @@ An original visual-effects-only addon using a real 200-frame GroundExplosionVDB 
 - Procedural visual crater: irregular opening, sunken mesh bowl, rim, scorched soil blanket, stencil/depth hole illusion.
 - Crater geometry detail controls, culling, instance limits and cleanup.
 - Lightweight ground dust accents and combined local preview.
+- Orbital cinematic: assembling charge aperture, converging motes, descending layered beam, helical filaments, impact glare, paired shock rings, cooling crater fractures, seeded dust/flecks/sparks and environmental illumination.
 - Multiplayer broadcasts of cosmetic effects; saved crater positions synchronized for later joining players.
-- Repeatable PowerShell shader compile script and CI syntax checks.
+- Timestamped, deduplicated impacts; client-ready snapshots seek recent volumes to their current age.
+- Distance/detail/particle/light budgets, cleanup and Lua 5.1 behavioral tests, plus converter/audio tests and CI syntax checks.
 
 ## Developer installation
 
@@ -32,24 +34,34 @@ Your generated Blender/OpenVDB volume files must also be installed:
     materials/general_explosions/ground_explosion/frame_0000.vmt ...
     lua/general_explosions/data/ground_explosion.lua
 
-Compiled VCS and exported VTF files are Git-ignored and not provided in a fresh clone. Run tools/build_shaders.ps1 with your own ShaderCompile.exe, and see docs/PIPELINE.md for the OpenVDB exporter. Existing working compiled shaders do not need rebuilding for these Lua-only changes.
+The two compiled VCS files are tracked (pixel: 859 bytes; vertex: 251 bytes). Exported VTF/VMT frames are not tracked; a fresh clone cannot render the volume without matching local textures. Run tools/build_shaders.ps1 with your own ShaderCompile.exe, and see docs/PIPELINE.md for the OpenVDB exporter. Existing working compiled shaders do not need rebuilding for these Lua-only changes.
 
-The addon includes client autorun files for craters, dust, networking and volumes, a server autorun file for shared cosmetic events, and the new orbital railgun entity. **If your installed folder is general_explosions-main, preserve that folder and its generated files:** copy only the updated Lua folder into it. Restart GMod afterward.
+The addon includes shared/client/server autorun files and the orbital entity. **If your installed folder is general_explosions-main, preserve it and its generated files:** update Lua **except your existing generated ground_explosion.lua manifest**, and preserve custom WAVs; copy the supplied normalized WAVs only after backing up and explicitly choosing them. Keep all local VTF/VMT/VCS files. Restart GMod afterward. See the [installation guide](docs/RAILGUN.md#install-without-losing-the-working-volume).
 
-## New: orbital railgun visual entity
+The checked-in manifest contains 188 texture records (0–187). Their source data is preserved unchanged; the repository cannot establish whether 188–199 were empty or omitted. Keep your working 200-frame local export. Future exports retain empty-frame timing and the requested frame range explicitly.
 
-The first spawnable cinematic entity now lives in `lua/entities/ge_orbital_railgun/`. It is a **visual-only** blue-white energy column, with charge rings, an impact flash, shockwave, optional dynamic light, and our existing volumetric explosion and crater. It has no damage or projectile simulation.
+## Orbital railgun cinematic entity
 
-- Spawn through **Q menu → Entities → General Explosions → Orbital Railgun (Visual)** and click relatively flat map ground.
+Optional user-supplied VAC impact shader integration is available alongside
+the original OpenVDB renderer. Its required resources are now included in the GitHub branch ZIP;
+see [installation and limitations](docs/VAC_IMPACT.md).
+
+Latest controls: `ge_railgun_beam_width 1.75` (client, 0.5–3), `ge_railgun_shake 1`, `ge_railgun_shake_strength 8`, `ge_railgun_damage 150` (server, 0–1000). Damage occurs once at 3.2 seconds within the impact radius (320 by default); damage 0 restores cinematic-only operation. Generic crater/volume/FX previews remain cosmetic.
+
+The spawnable entity lives in `lua/entities/ge_orbital_railgun/`. It combines procedural orbital energy visuals with the existing volumetric explosion and stencil bowl. The beam requires no new compiled shaders or downloadable textures.
+
+- Spawn through **Q menu → Entities → General Explosions → Orbital Railgun** and click relatively flat map ground.
 - Or aim at flat world ground and run `ge_railgun_fire` in the developer console.
 - Only available in single-player or to server admins.
-- Sound cue starts are fixed at **0.0 s** (3-second charge), **3.0 s** (1-second beam fire), and **3.2 s** (5-second explosion audio). Files are provided by the addon owner.
+- Sound cue starts remain **0.0 s**, **3.0 s**, and **3.2 s**, relative to the networked cinematic start. Server scheduling is tick-quantized; client audio also has network/device latency.
 
-Optional WAVs go under `sound/general_explosions/railgun/` as `railgun_charge.wav`, `railgun_fire.wav`, `railgun_explosion.wav`. Missing sounds do not block the visuals. The beam itself requires no additional compiled shader.
+The owner's three WAV cues ship under `sound/general_explosions/railgun/` with lowercase names. They are now mono 16-bit PCM at the original 44.1 kHz rate, with original frame counts and no trimming (approximately 3.135/5.085/13.377 seconds). Missing sounds do not block visuals. The unused alternate fire WAV is retained.
 
 Client color can be set with `ge_railgun_color blue`, `ge_railgun_color purple`, or `ge_railgun_color red`. Admin/server console can adjust `ge_railgun_radius 320`. The volumetric component still requires the original shaders, manifest and VTF sequence.
 
 **Game-testing status:** entity Lua compiles; in-game visual/audio sync and compatibility still need verification. See [the complete railgun guide](docs/RAILGUN.md).
+
+Use `ge_railgun_clear` to cancel active sequences and clear replicated impacts, and `ge_fx_resync` to request history again. Quality presets also control orbital detail and light budget. Read [the technical audit](docs/AUDIT.md) for confirmed bugs, preservation boundaries and remaining limits.
 
 ## In-game controls
 
@@ -103,6 +115,11 @@ On the server, available to administrators or local games:
 | ge_crater_distance | 12000 | Crater draw cutoff |
 | ge_fx_dust | 1 | Enable dust |
 | ge_fx_particle_amount | 0.65 | Dust density |
+| ge_fx_particle_budget | 192 | Impact particle budget, 32–512 |
+| ge_railgun_quality | 1 | Procedural beam detail, 0–2 |
+| ge_railgun_distance | 18000 | Orbital visual cutoff |
+| ge_railgun_light_budget | 2 | Nearest railgun world lights, 0–4 |
+| ge_crater_heat | 1 | Six-second cooling fissures |
 
 GMod saves many client convars. Values you set during earlier tests may override these new defaults.
 
@@ -112,7 +129,17 @@ GMod saves many client convars. Values you set during earlier tests may override
 - Craters may expose artifacts on sloped ground, overlapping props, unusual maps, or when other addons manipulate the stencil/depth buffer.
 - 200 uncompressed 128-cubed RGBA8 frames occupy about 1.56 GiB; animation frame swaps can affect VRAM and frame time.
 - Volume frame interpolation and opaque-scene depth termination are not yet implemented.
-- New gameplay-facing systems are experimental; GitHub syntax checks cannot substitute for real GMod rendering tests.
+- New cinematic systems require visual acceptance; automated code checks cannot substitute for real GMod rendering tests.
 - Original code only. No V.A.C. assets, shaders or Lua source are redistributed.
 
 See docs/CRATERS.md for the crater design and test plan; docs/PIPELINE.md for shaders and texture conversion.
+
+## Automated development checks
+
+```text
+python -m pip install -r tests/requirements.txt
+python -m unittest discover -s tests -v
+python -m py_compile tools/vdb_to_vtf.py tools/prepare_audio.py
+```
+
+Python 3.10+; NumPy and Lupa are offline development/test dependencies only. The addon adds no runtime dependency. Tests execute actual Lua 5.1 with mocked GMod boundaries and protect the unchanged shader/manifest sources. CI also runs the native Lua 5.1 parser. No automated check here renders Source images or measures GPU performance.

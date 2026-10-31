@@ -1,57 +1,102 @@
--- General Explosions: client-side visual effects controller.
--- Network events contain only world positions and cosmetic parameters.
+-- Cosmetic event coordination; all animation ages use server CurTime.
 if not CLIENT then return end
-
+if not include("general_explosions/load_runtime.lua") then return end
 GEVisuals = GEVisuals or {}
 local FX = GEVisuals
+local queue, pending, seen, order = {}, {}, {}, {}
+local function report(kind, reason)
+    FX.warnings = FX.warnings or {}
+    local key = kind .. tostring(reason)
+    if FX.warnings[key] then return end
+    FX.warnings[key] = true
+    print("[GE] " .. kind .. ": " .. tostring(reason))
+end
 
-local function spawnAt(pos, radius, depth, seed, glass)
-    if not isvector(pos) then return end
-    radius = math.Clamp(tonumber(radius) or 260, 30, 2000)
-    depth = math.Clamp(tonumber(depth) or radius * 0.24, 0, radius * 0.7)
+local function crater(c)
+    queue[#queue + 1] = c
+    while #queue > 32 do table.remove(queue, 1) end
+end
 
-    if GECraters and GECraters.Add then
-        local ok, err = GECraters.Add(pos, radius, depth, { seed = seed, glass = glass })
-        if not ok then print("[GE] Crater: " .. tostring(err)) end
+local function transient(c)
+    local age = CurTime() - c.time
+    if age < 0 then
+        pending[#pending + 1] = c
+        while #pending > 32 do table.remove(pending, 1) end
+        return
     end
-    if GEImpactFX and GEImpactFX.Burst then
-        GEImpactFX.Burst(pos + Vector(0, 0, 4), radius / 260, seed)
+    if age < 0.35 and age >= 0 and GEImpactFX then
+        GEImpactFX.Burst(c.pos + c.normal * 4, c.radius / 260, c.seed, c.normal)
     end
-    if GEVolume and GEVolume.Spawn then
-        local ok, reason = GEVolume.Spawn(pos + Vector(0, 0, 4), radius / 260)
-        if not ok then print("[GE] Volume: " .. tostring(reason)) end
+    if GEVolume then
+        local ok, reason = GEVolume.Spawn(c.pos + Vector(0, 0, 4), c.radius / 260, c.time)
+        if not ok and reason ~= "animation expired" then report("Volume", reason) end
     end
 end
 
-FX.SpawnAt = spawnAt
+local function receive(c, snapshot)
+    if not GERuntime.Position(c.pos) or not GERuntime.Finite(c.time)
+        or c.time < 0 or c.time > CurTime() + 5 then return end
+    c.radius = GERuntime.Number(c.radius, 260, 30, 2000)
+    c.depth = GERuntime.Number(c.depth, c.radius * 0.24, 0, c.radius * 0.7)
+    if snapshot or not seen[c.id] then crater(c) end
+    if seen[c.id] then return end
+    seen[c.id] = true
+    order[#order + 1] = c.id
+    while #order > 64 do seen[table.remove(order, 1)] = nil end
+    transient(c)
+end
 
-net.Receive("ge_fx_visual_impact_v1", function()
-    local pos = net.ReadVector()
-    local radius = net.ReadFloat()
-    local depth = net.ReadFloat()
-    local seed = net.ReadUInt(24)
-    local glass = net.ReadBool()
-    spawnAt(pos, radius, depth, seed, glass)
-end)
+local function readRecord()
+    return {
+        id = net.ReadUInt(32), time = net.ReadFloat(), pos = net.ReadVector(), normal = net.ReadNormal(),
+        radius = net.ReadFloat(), depth = net.ReadFloat(), seed = net.ReadUInt(24), glass = net.ReadBool()
+    }
+end
 
-net.Receive("ge_fx_crater_snapshot_v1", function()
-    local count = net.ReadUInt(6)
-    if not GECraters then return end
-    GECraters.Clear()
-    for i = 1, count do
-        local pos = net.ReadVector()
-        local radius, depth = net.ReadFloat(), net.ReadFloat()
-        local seed = net.ReadUInt(24)
-        local glass = net.ReadBool()
-        local ok, err = GECraters.Add(pos, radius, depth, { seed = seed, glass = glass })
-        if not ok then print("[GE] Snapshot crater " .. i .. ": " .. tostring(err)) end
+function FX.SpawnAt(pos, radius, depth, seed, glass)
+    if not GERuntime.Position(pos) then return end
+    local c = { pos = pos, radius = GERuntime.Number(radius, 260, 30, 2000),
+        seed = seed, glass = glass, time = CurTime(), normal = Vector(0, 0, 1) }
+    c.depth = GERuntime.Number(depth, c.radius * 0.24, 0, c.radius * 0.7)
+    crater(c)
+    transient(c)
+end
+
+hook.Add("Think", "GE.FX.BuildCraters", function()
+    for i = #pending, 1, -1 do
+        if pending[i].time <= CurTime() then transient(table.remove(pending, i)) end
     end
+    -- At most one mesh build per frame; joins cannot trigger 32 builds at once.
+    if #queue == 0 or not GECraters then return end
+    if queue[1].time > CurTime() then return end
+    local c = table.remove(queue, 1)
+    local ok, err = GECraters.Add(c.pos, c.radius, c.depth, { seed = c.seed, glass = c.glass, time = c.time })
+    if not ok then report("Crater", err) end
 end)
 
-net.Receive("ge_fx_clear_v1", function()
+net.Receive("ge_fx_visual_impact_v2", function() receive(readRecord(), false) end)
+net.Receive("ge_fx_crater_snapshot_v2", function()
+    local count = net.ReadUInt(6)
+    queue = {}
+    if GECraters then GECraters.Clear() end
+    for _ = 1, count do receive(readRecord(), true) end
+end)
+
+function FX.Clear()
+    if GEVACImpact then GEVACImpact.Clear() end
+    queue, pending, seen, order = {}, {}, {}, {}
     if GECraters then GECraters.Clear() end
     if GEVolume then GEVolume.ClearInstances() end
-end)
+    if GEImpactFX and GEImpactFX.Clear then GEImpactFX.Clear() end
+end
+net.Receive("ge_fx_clear_v2", FX.Clear)
+hook.Add("PostCleanupMap", "GE.FX.Cleanup", FX.Clear)
+local function ready()
+    net.Start("ge_fx_ready_v2")
+    net.SendToServer()
+end
+hook.Add("InitPostEntity", "GE.FX.Ready", ready)
+concommand.Add("ge_fx_resync", ready)
 
 concommand.Add("ge_fx_local_test", function(_, _, args)
     local ply = LocalPlayer()
@@ -61,14 +106,6 @@ concommand.Add("ge_fx_local_test", function(_, _, args)
         print("[GE] Look at fairly level map ground for an impact preview.")
         return
     end
-    local radius = math.Clamp(tonumber(args[1]) or 260, 30, 2000)
-    local depth = math.Clamp(tonumber(args[2]) or radius * 0.24, 0, radius * 0.7)
-    spawnAt(tr.HitPos, radius, depth, math.random(1, 999999), false)
-    print("[GE] Local visual impact preview at crosshair (no damage).")
-end, nil, "Preview smoke, ground crater and dust together: ge_fx_local_test [radius] [depth]")
-
-concommand.Add("ge_fx_local_clear", function()
-    if GECraters then GECraters.Clear() end
-    if GEVolume then GEVolume.ClearInstances() end
-    print("[GE] Cleared local visual impacts.")
-end)
+    FX.SpawnAt(tr.HitPos, args[1], args[2], math.random(1, 999999), false)
+end, nil, "Preview smoke, ground crater and dust: ge_fx_local_test [radius] [depth]")
+concommand.Add("ge_fx_local_clear", FX.Clear)

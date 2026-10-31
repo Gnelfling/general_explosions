@@ -4,7 +4,7 @@
 
 Target: the real 200-frame GroundExplosionVDB, reading density and flames without substituting a procedural effect.
 
-The project owner has successfully compiled the two HLSL shaders using the standalone ShaderCompile utility and visually verified the full 200-frame smoke/fire animation in Garry's Mod. The compiled VCS files and 3D VTF textures remain local/ignored by Git. The new crater, multivolume and network features are experimental and need separate in-game validation.
+The project owner has successfully compiled the two HLSL shaders using the standalone ShaderCompile utility and visually verified the full 200-frame smoke/fire animation in Garry's Mod. The compiled VCS files are tracked; the large VTF/VMT sequence remains local and untracked. The new crater, multivolume and network features are experimental and need separate in-game validation.
 
 ## Source data contract
 
@@ -17,6 +17,8 @@ The project owner has successfully compiled the two HLSL shaders using the stand
 - Output VTF volume storage is Z slices, then Y rows, with X changing fastest.
 - Each frame has individual bounds. The global spatial anchor is derived from the earliest VDB frame, so the smoke expands without being recentered vertically.
 - Only matching axis-aligned, z-up grid transforms are currently supported.
+- Empty exported frames now create explicit `empty=true` timeline records instead of disappearing. Lua/JSON manifests also preserve `first_frame` and `last_frame`, including the final unsampled interval for stepped exports. Old manifests remain compatible.
+- The checked-in manifest has 188 texture records, 0–187. It is unchanged by the cinematic upgrade. Do not infer the contents of 188–199 from missing metadata; preserve your working local 200-frame export or regenerate from the actual VDB source.
 
 ## Export using Blender 5.2
 
@@ -82,3 +84,20 @@ Facepunch custom shader installation: https://wiki.facepunch.com/gmod/custom_sha
 OpenVDB NumPy copyToArray: https://www.openvdb.org/documentation/doxygen/python.html
 GMod shader guide (volume textures example): https://github.com/meetric1/gmod_shader_guide
 Source ShaderCompile: https://github.com/SCell555/ShaderCompile
+
+## Cinematic upgrade preservation
+
+The railgun update does not modify HLSL/FXC, compiled VCS, existing VTF data,
+manifest frame records, coordinate anchors, channel packing or c0–c3 meanings.
+Golden source hashes enforce this in tests. Lua changes add timestamped instance
+starts, binary frame lookup, empty-frame support, distance culling before texture
+lookup, back-to-front one-shot ordering, manifest validation and map cleanup.
+Disabling volume rendering hides existing instances while they continue aging.
+
+For servers, the installed generated Lua manifest is now sent with AddCSLuaFile.
+Distribute its matching VTF/VMT/VCS assets through the existing content delivery
+setup. Registering the three railgun WAVs does not distribute volume textures.
+
+An empty frame has no texture or decode fields; the renderer draws nothing for
+that interval. A stepped sequence holds the preceding sampled record until the
+next sample, as before. Nothing interpolates or fabricates missing smoke data.

@@ -5,11 +5,12 @@ This module creates an apparent crater in Garry's Mod without modifying a map's 
 ## Rendering flow
 
 1. A local preview or cosmetic server event supplies a world point, crater radius, depression depth, and deterministic seed.
-2. The client traces against world brushes around that point, creating concentric ring vertices with irregular angular outlines.
+2. The client samples a shared 25/49/81-point world-brush height lattice by detail, then creates concentric ring vertices with irregular angular outlines. Bilinear terrain interpolation avoids repeated traces and inconsistent center heights.
 3. A hollow bowl mesh is built below the traced ground, an elevated rim is built around its edge, and a fading scorch blanket covers the perimeter.
 4. During PostDrawOpaqueRenderables, the opening mesh writes a stencil region without writing color or depth.
 5. Within that stencil, depth is cleared. The sunken bowl is rendered in the revealed region. Stencil is disabled afterward and rim/blanket meshes are drawn.
-6. A render-state cleanup runs even if the draw fails. All meshes are destroyed when the map is cleaned or the crater limit is exceeded.
+6. Coherent radial fracture shading, exposed strata and a six-second additive heat mesh accent the bowl/rim. `ge_crater_heat 0` disables the heat draw. Historical snapshots use the original impact age, so cooled craters stay cooled.
+7. Cleanup resets depth/color/alpha/stencil/blend state even on failure. A failed crater is quarantined after one diagnostic. Meshes are owned before construction starts and destroyed after partial-build failure, map cleanup, shutdown or eviction. Network reconstruction builds at most one crater per frame; the pending queue is capped at 32.
 
 This is visually similar in principle to the virtual openings described in Facepunch's stencil-rendering documentation, but its geometry and code are authored for General Explosions and no V.A.C. files are redistributed.
 
@@ -44,7 +45,7 @@ The test point should be on the map world, not on a prop or player. Radius and d
 - Stencil and depth clearing can uncover other render passes incorrectly, especially on complex terrain or when depth-sensitive effects are active.
 - Transparent objects and world props may not participate in the hole illusion naturally.
 - World brush traces cannot truly remove geometry. Do not promise the player can physically enter the hole.
-- The initial surface material uses reliable UnlitGeneric + procedural vertex colors, not PBR or expensive custom shaders. Texture refinement will follow after testing.
+- Surface materials use stock UnlitGeneric + original procedural vertex colors and an additive heat pass, without new textures or shaders. Scorch-only mode allocates one mesh and never clears world depth.
 - Tracing and building meshes has a one-time cost per new crater. Geometry LOD, maximum crater count and draw distance are adjustable.
 - Multiple overlapping craters have not yet been validated.
 - Cosmetic network events are admin-controlled on servers; server history synchronizes the visual crater list for late joiners.
