@@ -36,6 +36,18 @@ Compiled VCS and exported VTF files are Git-ignored and not provided in a fresh 
 
 The addon includes client autorun files for craters, dust, networking and volumes, plus a server autorun file for shared cosmetic events. Restart GMod after updating them.
 
+## In-game controls
+
+Open the Sandbox spawn menu (Q), switch to Utilities, and look for **General Explosions → Visual Effects**. The panel has buttons for smoke, craters, combined previews and quality controls.
+
+Quality presets can also be switched with these commands:
+
+    ge_quality low
+    ge_quality balanced
+    ge_quality high
+
+The balanced preset uses the previously tested 40-step raymarch setting. Quality changes do not overwrite your smoke tint or fire intensity.
+
 ## First commands to test in GMod
 
 Aim at fairly flat world ground on gm_construct, then use the developer console:
