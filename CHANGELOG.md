@@ -1,5 +1,14 @@
 # Changelog
 
+## Additional railgun choreography
+
+- Added rising canted containment hoops, final axial latches, an energized
+  orbital iris, a beam-head compression ring, pressure-dome arcs and ion trails.
+- Retained all existing visual layers, palettes, performance controls, sound
+  timings, audio files, shader contracts and volume/frame data.
+- Added extreme-radius/slope geometry-budget and frame-independent replay tests.
+  In-game appearance and performance remain unverified; PR stays unmerged.
+
 ## 2026-10-31 — orbital cinematic upgrade
 
 - Audited all tracked sources, docs, tests, shaders, manifest and WAV headers.

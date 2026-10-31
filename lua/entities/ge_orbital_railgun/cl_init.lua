@@ -212,6 +212,108 @@ local function impact(self, t, col, alpha, detail, normal, right, forward, radiu
         radius * 0.08, 0, 1, tint(col.core, 110 * flash * alpha * vis))
 end
 
+-- Supplemental choreography. These layers never replace the charge, beam,
+-- shock rings, particles, crater or VDB; all phases use the server clock.
+local function containment(self, t, col, alpha, detail, normal, right, forward, radius)
+    local f = R.Smooth(t / self.GEFireAt)
+    local assemble = R.Smooth(t / 0.8)
+    local lock = R.Smooth((t - 2.35) / 0.65)
+    local pos = self:GetPos()
+    local segments = detail == 0 and 24 or 48
+    local seed = self:GetVisualSeed() % 19
+    -- Floating, canted containment hoops rise out of the surface and collapse
+    -- into a narrow throat immediately before firing.
+    for i = 1, detail + 2 do
+        local angle = t * (0.6 + i * 0.12) * (i % 2 == 0 and -1 or 1) + seed + i * 2.1
+        local axis = right * math.cos(angle) + forward * math.sin(angle)
+        local tangent = normal:Cross(axis)
+        local tilt = 0.28 + 0.20 * math.sin(t * 0.7 + i)
+        local tilted = axis * math.cos(tilt) + normal * math.sin(tilt)
+        local center = pos + normal * radius * assemble * (0.22 + i * 0.20) * (1 - lock * 0.35)
+        local r = radius * (0.75 + i * 0.12) * assemble * (1 - lock * 0.8)
+        ring(center, tilted, tangent, r, segments, 2 + f * 2,
+            tint(col.outer, (30 + f * 65) * assemble * alpha), angle,
+            0, math.floor(segments * 0.75))
+    end
+    -- Six axial latches snap toward the core as a final, readable anticipation.
+    if lock > 0 then
+        render.SetMaterial(beamMat)
+        for i = 1, 6 do
+            local angle = i / 6 * TAU + seed
+            local dir = right * math.cos(angle) + forward * math.sin(angle)
+            local p = pos + dir * radius * (1.2 - lock * 0.85) + normal * 12
+            render.DrawBeam(p, p + normal * radius * (0.12 + lock * 0.32),
+                3 + lock * 3, 0, 1, tint(col.core, lock * 160 * alpha))
+        end
+    end
+    -- Orbital emitter iris appears overhead while the ground aperture locks.
+    local sky = R.Smooth((t - 1.75) / 1.0)
+    if sky > 0 then
+        local top = pos + UP * heightCV:GetFloat()
+        ring(top, Vector(1,0,0), Vector(0,1,0), radius * (2.5 - lock * 0.8),
+            segments, 8, tint(col.outer, sky * 100 * alpha), -t)
+        ring(top - UP * 45, Vector(1,0,0), Vector(0,1,0), radius * (1.5 - lock * 0.8),
+            segments, 4, tint(col.core, sky * 130 * alpha), t)
+    end
+end
+
+local function discharge(self, t, col, alpha, detail, radius)
+    local e = t - self.GEFireAt
+    local fade = R.Smooth(e / 0.035) * R.Smooth((self.GEBeamEnd - t) / 0.4) * alpha
+    local pos = self:GetPos() + UP * 15
+    local height = heightCV:GetFloat()
+    local top = pos + UP * height
+    local travel = R.Smooth(e / (self.GEImpactAt - self.GEFireAt))
+    -- A compressed luminous torus rides the leading edge of the discharge.
+    ring(top - UP * height * travel, Vector(1,0,0), Vector(0,1,0),
+        radius * (0.35 + (1 - travel) * 0.9), 24, radius * 0.035,
+        tint(col.core, fade * (1 - R.Smooth((e - 0.2) / 0.15)) * 220), t)
+    -- The sky iris stays energized during firing, tying the column to a source.
+    ring(top, Vector(1,0,0), Vector(0,1,0), radius * 1.7, detail == 0 and 24 or 48,
+        7, tint(col.outer, fade * 100), -t)
+end
+
+local function pressureCrown(self, t, col, alpha, detail, normal, right, forward, radius)
+    local e = t - self.GEImpactAt
+    local pos = self:GetPos() + normal * 12
+    if e < 0 then return end
+    -- Three sparse meridian arcs give the ground shockwave a hemispherical
+    -- pressure front. No refraction, screen capture or depth overrides.
+    if detail > 0 and e < 0.85 then
+        local u = e / 0.85
+        local spread = radius * (0.2 + (1 - (1 - u) ^ 2) * 2.8)
+        for i = 1, detail + 1 do
+            local angle = i / (detail + 1) * math.pi + self:GetVisualSeed() % 7
+            local axis = right * math.cos(angle) + forward * math.sin(angle)
+            ring(pos, axis, normal, spread, 32, 5 * (1 - u) + 1,
+                tint(col.outer, 65 * (1 - u) ^ 2 * alpha), 0, 0, 16)
+        end
+    end
+    -- Inert ion trails fan upward after the flash. Each is an analytic short
+    -- polyline, so joining late or changing FPS cannot multiply emissions.
+    local count, steps = detail == 0 and 4 or (detail == 1 and 6 or 8), 5
+    render.SetMaterial(arcMat)
+    for i = 1, count do
+        local age = e - (i % 3) * 0.055
+        if age > 0 and age < 1.65 then
+            local u = age / 1.65
+            local a = i * 2.399963 + self:GetVisualSeed() % 23
+            local dir = right * math.cos(a) + forward * math.sin(a)
+            render.StartBeam(steps + 1)
+            for j = 0, steps do
+                local v = math.max(0, u - (1 - j / steps) * 0.16)
+                local wobble = math.sin(v * 18 + i) * radius * 0.04 * v
+                local p = pos + dir * radius * (0.15 + v * 1.8)
+                    + normal * radius * (2.4 * v - 1.6 * v * v)
+                    + normal:Cross(dir) * wobble
+                render.AddBeam(p, (2 + radius * 0.009) * (1 - u), v * 3,
+                    tint(col.outer, 125 * (1 - u) ^ 2 * (j / steps) * alpha))
+            end
+            render.EndBeam()
+        end
+    end
+end
+
 function ENT:DrawTranslucent()
     if not enabled:GetBool() or self._geCancelled then return end
     local begin = self:GetStartTime()
@@ -226,9 +328,18 @@ function ENT:DrawTranslucent()
     local normal, right, forward = basis(self:GetGroundNormal())
     local radius = R.Number(self:GetImpactRadius(), 320, 80, 900)
     local col = palette()
-    if t < self.GEFireAt then charge(self, t, col, alpha, detail, normal, right, forward, radius) end
-    if t >= self.GEFireAt and t <= self.GEBeamEnd then column(self, t, col, alpha, detail, radius) end
-    if t >= self.GEImpactAt then impact(self, t, col, alpha, detail, normal, right, forward, radius) end
+    if t < self.GEFireAt then
+        charge(self, t, col, alpha, detail, normal, right, forward, radius)
+        containment(self, t, col, alpha, detail, normal, right, forward, radius)
+    end
+    if t >= self.GEFireAt and t <= self.GEBeamEnd then
+        column(self, t, col, alpha, detail, radius)
+        discharge(self, t, col, alpha, detail, radius)
+    end
+    if t >= self.GEImpactAt then
+        impact(self, t, col, alpha, detail, normal, right, forward, radius)
+        pressureCrown(self, t, col, alpha, detail, normal, right, forward, radius)
+    end
     -- No blend/depth/stencil/lighting overrides are used by this renderer.
 end
 

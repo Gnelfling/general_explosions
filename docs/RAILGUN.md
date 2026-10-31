@@ -178,3 +178,21 @@ API references: [beams](https://wiki.facepunch.com/gmod/render_beams),
 [dynamic light fields](https://wiki.facepunch.com/gmod/Structures/DynamicLight),
 [stencil-scoped clearing](https://wiki.facepunch.com/gmod/render.ClearBuffersObeyStencil),
 [audio format basics](https://wiki.facepunch.com/gmod/sound_basics).
+
+## Additional orbital choreography
+
+The charge now raises canted containment hoops above the original aperture;
+six axial latches contract during the final 0.65 seconds. An orbital iris appears
+overhead during the last 1.25 seconds and stays energized while firing. A compact
+torus follows the descending beam head to the unchanged 3.2-second impact.
+Sparse hemispherical pressure arcs and rising ion trails add depth after impact,
+alongside all existing flash, shock rings, particles, crater and OpenVDB layers.
+
+These additions use the existing palette, scale, master toggle, culling and
+quality settings. Low detail omits the pressure dome; no particle emitter,
+extra dynamic light, shader, texture download or render override is added.
+Geometry is derived from the networked clock and seed rather than frame deltas.
+Tests bound polybeam vertices per entity draw to 350 low / 900 balanced or high
+at radii 80–900, including sloped ground and maximum beam height. These are
+geometry ceilings, not measured GPU performance. Visual composition, sky clipping
+and frame time still require the in-game acceptance matrix above.
