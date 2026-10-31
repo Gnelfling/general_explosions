@@ -91,7 +91,13 @@ local function drawBox(frame, center, origin, unitScale, cameraUVW, inside)
     for _, face in ipairs(cubeFaces) do
         -- Determine which side of the box faces the viewer. When inside the
         -- box, render exit faces instead of entry faces.
-        local toEye = Vector(cameraUVW.x - 0.5, cameraUVW.y - 0.5, cameraUVW.z - 0.5)
+        local c = face.corners
+        local faceCenter = Vector(
+            (c[1][1] + c[2][1] + c[3][1] + c[4][1]) * 0.25,
+            (c[1][2] + c[2][2] + c[3][2] + c[4][2]) * 0.25,
+            (c[1][3] + c[2][3] + c[3][3] + c[4][3]) * 0.25
+        )
+        local toEye = cameraUVW - faceCenter
         local facing = face.normal:Dot(toEye)
         if (inside and facing < 0) or (not inside and facing > 0) then
             visible[#visible + 1] = face
