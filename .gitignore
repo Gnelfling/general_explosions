@@ -1,0 +1,13 @@
+# Generated data is too large for ordinary Git history.
+output/
+*.vdb
+*.vtf
+*.vcs
+
+# Blender and Python temporary files
+__pycache__/
+*.py[cod]
+.blender/
+*.blend1
+.DS_Store
+Thumbs.db
