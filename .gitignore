@@ -3,6 +3,7 @@ output/
 *.vdb
 *.vtf
 *.vcs
+lua/general_explosions/data/vac_impact.lua
 
 # Blender and Python temporary files
 __pycache__/

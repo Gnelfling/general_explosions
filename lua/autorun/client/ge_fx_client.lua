@@ -83,6 +83,7 @@ net.Receive("ge_fx_crater_snapshot_v2", function()
 end)
 
 function FX.Clear()
+    if GEVACImpact then GEVACImpact.Clear() end
     queue, pending, seen, order = {}, {}, {}, {}
     if GECraters then GECraters.Clear() end
     if GEVolume then GEVolume.ClearInstances() end

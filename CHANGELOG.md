@@ -1,5 +1,11 @@
 # Changelog
 
+## Optional VAC impact volume
+
+- Added separate impact shader/atlas binding alongside the original VDB.
+- Added a non-destructive local resource importer; external assets stay out of Git.
+- Added seek, cull, expiry, draw failure and import tests. GPU output remains untested.
+
 ## Wider laser, impact shake and configurable damage
 
 - User-requested scope change: railgun impact now deals server-side explosion damage (150 default, 0 for cinematic mode), once at 3.2 seconds.

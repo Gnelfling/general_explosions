@@ -15,11 +15,12 @@ engine={TickCount=function() return math.floor(NOW*66) end}
 util.GetPixelVisibleHandle=function() return {} end
 util.PixelVisible=function() PIXEL_CALLS=PIXEL_CALLS+1; return 1 end
 PIXEL_CALLS=0
-function EyeAngles() return {Right=function() return Vector(1,0,0) end} end
+function EyeAngles() return {Right=function() return Vector(1,0,0) end,Forward=function() return Vector(0,1,0) end} end
 LIGHTS={}
 function DynamicLight(id) LIGHTS[id]=LIGHTS[id] or {}; return LIGHTS[id] end
 render={state={},calls=0,beam=0}
 function render.SetMaterial() end
+function render.DrawQuadEasy() if FAIL_VERTEX then error('injected quad failure') end end
 local function finite(v) assert(v==v and v>-math.huge and v<math.huge) end
 local function position(v) finite(v.x);finite(v.y);finite(v.z) end
 function render.DrawSprite(p,w,h,c) position(p);finite(w);finite(h);finite(c.a); render.calls=render.calls+1 end

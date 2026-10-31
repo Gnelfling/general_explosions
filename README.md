@@ -42,7 +42,11 @@ The checked-in manifest contains 188 texture records (0â€“187). Their source dat
 
 ## Orbital railgun cinematic entity
 
-Latest controls: `ge_railgun_beam_width 1.75` (client, 0.5–3), `ge_railgun_shake 1`, `ge_railgun_shake_strength 8`, `ge_railgun_damage 150` (server, 0–1000). Damage occurs once at 3.2 seconds within the impact radius (320 by default); damage 0 restores cinematic-only operation. Generic crater/volume/FX previews remain cosmetic.
+Optional user-supplied VAC impact shader integration is available alongside
+the original OpenVDB renderer. It requires a separate local resource pack;
+see [installation and limitations](docs/VAC_IMPACT.md).
+
+Latest controls: `ge_railgun_beam_width 1.75` (client, 0.5â€“3), `ge_railgun_shake 1`, `ge_railgun_shake_strength 8`, `ge_railgun_damage 150` (server, 0â€“1000). Damage occurs once at 3.2 seconds within the impact radius (320 by default); damage 0 restores cinematic-only operation. Generic crater/volume/FX previews remain cosmetic.
 
 The spawnable entity lives in `lua/entities/ge_orbital_railgun/`. It combines procedural orbital energy visuals with the existing volumetric explosion and stencil bowl. The beam requires no new compiled shaders or downloadable textures.
 

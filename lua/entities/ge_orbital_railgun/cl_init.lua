@@ -345,6 +345,13 @@ function ENT:DrawTranslucent()
 end
 
 function ENT:Think()
+    if not self._geVACStarted and not self._geCancelled and enabled:GetBool()
+        and self:GetStartTime() > 0 and CurTime() >= self:GetStartTime() + self.GEImpactAt then
+        self._geVACStarted = true
+        if GEVACImpact then
+            GEVACImpact.Spawn(self:GetPos() - UP * 3, self:GetImpactRadius(), self:GetStartTime() + self.GEImpactAt)
+        end
+    end
     if not enabled:GetBool() or not lightCV:GetBool() or self._geCancelled then retireLight(self) return end
     local begin = self:GetStartTime()
     local t = CurTime() - begin

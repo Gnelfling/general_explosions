@@ -200,9 +200,9 @@ and frame time still require the in-game acceptance matrix above.
 
 ## Wider beam and damaging impact
 
-The beam is now 1.75 times its previous width by default. Client `ge_railgun_beam_width` accepts 0.5–3, affecting the core, aura, filaments and head ring without extra geometry.
+The beam is now 1.75 times its previous width by default. Client `ge_railgun_beam_width` accepts 0.5â€“3, affecting the core, aura, filaments and head ring without extra geometry.
 
-Server settings: `ge_railgun_damage 150` (0–1000), `ge_railgun_shake 1`, `ge_railgun_shake_strength 8` (0–20). Set damage to 0 for the original cinematic-only mode; shake to 0 disables camera motion. Damage is applied once at the 3.2-second impact, within the entity impact radius (320 by default, 80–900). Creator attribution falls back to the railgun if the owner disconnected. The engine handles explosion line of sight and entity damage; destructible props can be affected. There is no BSP crater destruction or projectile. Generic FX broadcasts, local previews and snapshots never deal damage.
+Server settings: `ge_railgun_damage 150` (0â€“1000), `ge_railgun_shake 1`, `ge_railgun_shake_strength 8` (0â€“20). Set damage to 0 for the original cinematic-only mode; shake to 0 disables camera motion. Damage is applied once at the 3.2-second impact, within the entity impact radius (320 by default, 80â€“900). Creator attribution falls back to the railgun if the owner disconnected. The engine handles explosion line of sight and entity damage; destructible props can be affected. There is no BSP crater destruction or projectile. Generic FX broadcasts, local previews and snapshots never deal damage.
 
 Impact shake now uses amplitude 8, frequency 8, duration 1.2 seconds, capped at 3000 units and includes airborne players. Spawn remains admin/single-player only. Sound offsets and all volume/shader/audio data are preserved. Earlier cinematic-only descriptions in audit/history documents describe the earlier scope. This user-requested gameplay change supersedes that scope for the railgun only. Test player/NPC/prop damage, attribution, occlusion and camera shake in an actual server before merging; mocked tests do not validate game balance or engine behavior.
 
