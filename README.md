@@ -32,7 +32,7 @@ tests/test_vtf_header.py    Small writer-format tests
 Run from **PowerShell** (replace the Blender executable and input paths for your installation):
 
 ```powershell
-& "C:\Program Files (x86)\Steam\steamapps\common\Blender\5.2\blender.exe" --background --python "tools\vdb_to_vtf.py" -- --input "C:\Users\klein\Downloads\blender workspace\GroundExplosionVDB\ground_explosion\ground_explosion_VDB\ground_explosion_0000.vdb" --out "output\ground_explosion" --first 100 --last 100 --resolution 128
+& "C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe" --background --python "tools\vdb_to_vtf.py" -- --input "C:\Users\klein\Downloads\blender workspace\GroundExplosionVDB\ground_explosion\ground_explosion_VDB\ground_explosion_0000.vdb" --out "output\ground_explosion" --first 100 --last 100 --resolution 128
 ```
 
 To process the animation, change `--first 0 --last 199` after verifying your files exist. Conversion output is **not** committed to Git: 200 frames of 128³ RGBA8 volumes would consume ~1.56 GiB before compression.
