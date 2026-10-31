@@ -1,7 +1,9 @@
 // General Explosions: vertex shader for a cube with 3D UV coordinates.
-// Requires Source's standard shader compiler include directory.
-// Expected shader name: ge_volume_vs30.vcs
-#include "common_vs_fxc.h"
+// Self-contained Shader Model 3.0 HLSL; no Source SDK include files required.
+// c4-c7: Source model-view-projection matrix (verify binding in GMod).
+// IMPORTANT: shader compilation and runtime binding are not yet validated.
+
+float4x4 cModelViewProj : register(c4);
 
 struct VS_INPUT
 {
@@ -17,10 +19,8 @@ struct VS_OUTPUT
 
 VS_OUTPUT main(VS_INPUT vertex)
 {
-    VS_OUTPUT result = (VS_OUTPUT)0;
-    float3 world_pos;
-    SkinPosition(0, vertex.position, 0, 0, world_pos);
-    result.clip_pos = mul(float4(world_pos, 1.0), cViewProj);
+    VS_OUTPUT result;
+    result.clip_pos = mul(vertex.position, cModelViewProj);
     result.uvw = vertex.uvw;
     return result;
 }
