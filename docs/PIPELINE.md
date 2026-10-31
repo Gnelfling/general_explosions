@@ -4,7 +4,7 @@
 
 Target: the real 200-frame GroundExplosionVDB, reading density and flames without substituting a procedural effect.
 
-The following are authored but not yet validated in GMod: conversion into VTF 7.2 RGBA8888 3D textures, HLSL ray marching, and GLua material/hull rendering. **The repository does not yet contain compiled VCS shader binaries.** Do not expect visible smoke in GMod before they are compiled and tested.
+The project owner has successfully compiled the two HLSL shaders using the standalone ShaderCompile utility and visually verified the full 200-frame smoke/fire animation in Garry's Mod. The compiled VCS files and 3D VTF textures remain local/ignored by Git. The new crater, multivolume and network features are experimental and need separate in-game validation.
 
 ## Source data contract
 
@@ -47,27 +47,27 @@ Custom pixel constants:
 - c2.x: density decode scale; c2.y: flame decode scale; c2.z: flame gain; c2.w: ambient.
 - c3.rgb: smoke tint; c3.w: opacity fade.
 
-For Shader Model 3.0, both vertex and pixel shaders need to be compiled to .vcs using a suitable Source shader compiler and the standard Source include headers. HLSL is not directly loaded by GMod. Install the resulting binaries here:
+For Shader Model 3.0, both shaders are compiled to .vcs by the standalone ShaderCompile utility. The vertex shader no longer requires Source SDK header downloads. Source HLSL itself is not loaded by GMod. Run tools/build_shaders.ps1 on Windows, or follow the commands in the script. The resulting local binaries go into the **addon**:
 
-    GarrysMod/garrysmod/shaders/fxc/ge_volume_ps30.vcs
-    GarrysMod/garrysmod/shaders/fxc/ge_volume_vs30.vcs
+    GarrysMod/garrysmod/addons/general_explosions/shaders/fxc/ge_volume_ps30.vcs
+    GarrysMod/garrysmod/addons/general_explosions/shaders/fxc/ge_volume_vs30.vcs
 
-A restart is often required to load new binaries. V.A.C. compiled shaders are NOT interchangeable with our volume format. The project does not redistribute any V.A.C. code or assets.
+The addon-contained compiled shader layout was verified working in the project owner's local GMod session. A restart is required after replacing shaders. V.A.C. shader binaries do not work with our data contract, and no V.A.C. assets are redistributed.
 
 ## GLua integration
 
-1. Put this repository's lua folder into garrysmod/addons/general_explosions/lua.
-2. Copy generated output/materials and generated output/lua data into the same addon folder.
-3. Install the new compiled shaders into the base garrysmod/shaders/fxc directory.
-4. Restart GMod.
-5. Use client console command ge_volume_status, then ge_volume_preview 1400, and ge_volume_stop.
+1. Install the repository as garrysmod/addons/general_explosions.
+2. Export OpenVDB textures and the Lua manifest into that addon, or copy the previously generated files there.
+3. Compile the two HLSL shaders locally using tools/build_shaders.ps1 and put the generated .vcs files in the addon's shaders/fxc directory.
+4. Restart GMod after changes.
+5. Use ge_volume_status, ge_volume_preview 1400, and ge_volume_stop. For one-shots use ge_volume_spawn 1400 and ge_volume_clear. For craters use ge_crater_test 260 65, then ge_crater_clear.
 
-Quality controls: ge_volume_steps, ge_volume_opacity, ge_volume_unit_scale, ge_volume_ambient, ge_volume_fire.
+Volume controls: ge_volume_steps, ge_volume_opacity, ge_volume_unit_scale, ge_volume_ambient, ge_volume_fire, ge_volume_speed, ge_volume_smoke_r, ge_volume_smoke_g, ge_volume_smoke_b, ge_volume_max_instances. Separate crater controls are documented in docs/CRATERS.md.
 
 ## Major known limitations
 
-- Pixel/vertex shader source has NOT been compiled in this environment or validated in-game.
-- True 3D texture sampling on an RX 6600 needs testing. One GMod shader guide warns of possible AMD issues for its volume-texture example.
+- Compiled shaders and full animation were confirmed by the project owner in GMod on an RX 6600. That does not guarantee compatibility on other GPUs, maps or shader configurations.
+- The new visual crater engine and multiplayer event handling still need an in-game test.
 - A depth-tested hull does not stop marching at opaque objects *inside* the volume; genuine scene-depth termination must be added.
 - Animation uses frame swaps rather than interpolation between two temporally adjacent volumes.
 - Full 200-frame distribution is large; cache controls, GPU memory management and compression are future work.
