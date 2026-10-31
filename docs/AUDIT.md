@@ -47,7 +47,7 @@ encountered restricted Windows temp-directory permissions. Use a workspace
 temp directory for local validation. Existing railgun checks only inspect text;
 they do not execute entity behavior or prove visuals.
 
-This checkout has no VTF/VCS assets and no attached GMod test session. Shader
+This checkout has the tracked VCS shaders but no VTF/VMT sequence or attached GMod test session. Shader
 appearance, stencil integration, positional audio, multiplayer under real
 latency, and GPU frame times require the manual acceptance matrix in RAILGUN.md.
 Original smoke/fire and animation were previously verified by the owner;

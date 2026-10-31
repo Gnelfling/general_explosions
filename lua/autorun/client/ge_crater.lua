@@ -2,6 +2,7 @@
 -- This does not modify BSP geometry or physics. The apparent hole is created
 -- with stencil masking, a depth clear, and an independently drawn bowl mesh.
 if not CLIENT then return end
+if not include("general_explosions/load_runtime.lua") then return end
 
 GECraters = GECraters or {}
 local CR = GECraters

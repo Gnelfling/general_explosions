@@ -1,5 +1,6 @@
 -- Cosmetic event coordination; all animation ages use server CurTime.
 if not CLIENT then return end
+if not include("general_explosions/load_runtime.lua") then return end
 GEVisuals = GEVisuals or {}
 local FX = GEVisuals
 local queue, pending, seen, order = {}, {}, {}, {}

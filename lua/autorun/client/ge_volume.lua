@@ -4,6 +4,7 @@
 -- No gameplay mechanics, damage, or network messages are implemented.
 
 if not CLIENT then return end
+if not include("general_explosions/load_runtime.lua") then return end
 
 GEVolume = GEVolume or {}
 local GE = GEVolume
@@ -81,6 +82,9 @@ local function setup()
             return false, "Invalid manifest timeline"
         end
         GE.manifest = result
+        if last < 199 then
+            print("[GE] Volume manifest ends at frame " .. last .. "; shorter exports are supported. Preserve your full local 200-frame manifest/VTF/VMT set if available; Git cannot recover missing frames.")
+        end
     end
     if not GE.material then
         local initial

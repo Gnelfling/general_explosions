@@ -1,6 +1,7 @@
 -- General Explosions: server-side synchronization for cosmetic world effects.
 -- Visuals only: no weapon, projectile, real-world targeting or damage logic.
 if CLIENT then return end
+if not include("general_explosions/load_runtime.lua") then return end
 
 util.AddNetworkString("ge_fx_visual_impact_v2")
 util.AddNetworkString("ge_fx_crater_snapshot_v2")

@@ -15,13 +15,13 @@ The owner's earlier smoke/fire test does not validate this upgrade. See
 Keep your existing addon folder, including a folder named
 `general_explosions-main`. Back it up first. Update the Lua scripts **except**
 your locally generated `lua/general_explosions/data/ground_explosion.lua`.
-Copy the three updated lowercase WAV files from `sound/general_explosions/railgun/`
+Preserve your custom WAVs. Only if you choose the supplied normalized cues, back up your existing audio first and copy the three lowercase WAV files from `sound/general_explosions/railgun/`
 to the same location inside the installed addon. Restart the server and clients.
 
 Keep all existing `materials/general_explosions/ground_explosion/` VTF/VMTs,
 `shaders/fxc/ge_volume_*.vcs`, and your matching generated manifest. No shader
-rebuild or volume conversion is needed. A clean clone lacks those large local
-assets. The checked-in manifest contains **188 texture records (0–187)**;
+rebuild or volume conversion is needed. A clean clone includes the two compiled shaders but lacks the large local
+VTF/VMT texture assets. The checked-in manifest contains **188 texture records (0–187)**;
 missing records 188–199 cannot be reconstructed from this repository. Preserve
 your working 200-frame export. The new exporter retains explicit empty frames
 and the requested start/end range for future exports.

@@ -1,5 +1,6 @@
 -- Bounded secondary accents; the original OpenVDB volume remains the explosion.
 if not CLIENT then return end
+if not include("general_explosions/load_runtime.lua") then return end
 GEImpactFX = GEImpactFX or {}
 local FX = GEImpactFX
 if FX.Clear then FX.Clear() end

@@ -1,4 +1,5 @@
 include("shared.lua")
+if not include("general_explosions/load_runtime.lua") then return end
 
 -- Original procedural geometry over stock Source materials. No new shaders.
 local enabled = CreateClientConVar("ge_railgun_visuals", "1", true, false, "Show orbital presentation", 0, 1)

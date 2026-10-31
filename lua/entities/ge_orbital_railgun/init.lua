@@ -1,6 +1,7 @@
 AddCSLuaFile("shared.lua")
 AddCSLuaFile("cl_init.lua")
 include("shared.lua")
+if not include("general_explosions/load_runtime.lua") then return end
 
 -- A sandbox presentation effect, not a functioning weapon.
 local radiusCV = CreateConVar(

@@ -34,9 +34,9 @@ Your generated Blender/OpenVDB volume files must also be installed:
     materials/general_explosions/ground_explosion/frame_0000.vmt ...
     lua/general_explosions/data/ground_explosion.lua
 
-Compiled VCS and exported VTF files are Git-ignored and not provided in a fresh clone. Run tools/build_shaders.ps1 with your own ShaderCompile.exe, and see docs/PIPELINE.md for the OpenVDB exporter. Existing working compiled shaders do not need rebuilding for these Lua-only changes.
+The two compiled VCS files are tracked (pixel: 859 bytes; vertex: 251 bytes). Exported VTF/VMT frames are not tracked; a fresh clone cannot render the volume without matching local textures. Run tools/build_shaders.ps1 with your own ShaderCompile.exe, and see docs/PIPELINE.md for the OpenVDB exporter. Existing working compiled shaders do not need rebuilding for these Lua-only changes.
 
-The addon includes shared/client/server autorun files and the orbital entity. **If your installed folder is general_explosions-main, preserve it and its generated files:** update Lua **except your existing generated ground_explosion.lua manifest**, and copy the three updated lowercase railgun WAVs. Keep all local VTF/VMT/VCS files. Restart GMod afterward. See the [installation guide](docs/RAILGUN.md#install-without-losing-the-working-volume).
+The addon includes shared/client/server autorun files and the orbital entity. **If your installed folder is general_explosions-main, preserve it and its generated files:** update Lua **except your existing generated ground_explosion.lua manifest**, and preserve custom WAVs; copy the supplied normalized WAVs only after backing up and explicitly choosing them. Keep all local VTF/VMT/VCS files. Restart GMod afterward. See the [installation guide](docs/RAILGUN.md#install-without-losing-the-working-volume).
 
 The checked-in manifest contains 188 texture records (0–187). Their source data is preserved unchanged; the repository cannot establish whether 188–199 were empty or omitted. Keep your working 200-frame local export. Future exports retain empty-frame timing and the requested frame range explicitly.
 

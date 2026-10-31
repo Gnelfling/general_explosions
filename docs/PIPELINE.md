@@ -4,7 +4,7 @@
 
 Target: the real 200-frame GroundExplosionVDB, reading density and flames without substituting a procedural effect.
 
-The project owner has successfully compiled the two HLSL shaders using the standalone ShaderCompile utility and visually verified the full 200-frame smoke/fire animation in Garry's Mod. The compiled VCS files and 3D VTF textures remain local/ignored by Git. The new crater, multivolume and network features are experimental and need separate in-game validation.
+The project owner has successfully compiled the two HLSL shaders using the standalone ShaderCompile utility and visually verified the full 200-frame smoke/fire animation in Garry's Mod. The compiled VCS files are tracked; the large VTF/VMT sequence remains local and untracked. The new crater, multivolume and network features are experimental and need separate in-game validation.
 
 ## Source data contract
 
