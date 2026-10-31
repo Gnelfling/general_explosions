@@ -83,7 +83,6 @@ def sample_grid(grid, bbox_min: tuple[int, int, int], bbox_max: tuple[int, int, 
     for axis in range(3):
         coords = np.linspace(bbox_min[axis], bbox_max[axis], resolution, dtype=np.float32)
         sampled = interp_axis(sampled, coords, bbox_min[axis], axis)
-        del dense
     return np.maximum(sampled, 0.0)
 
 
