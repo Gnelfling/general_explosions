@@ -13,11 +13,11 @@ local function apply(name)
         print("[GE] Quality presets: low, balanced, high")
         return
     end
-    RunConsoleCommand("ge_volume_steps", p.steps)
-    RunConsoleCommand("ge_volume_max_instances", p.volumeMax)
-    RunConsoleCommand("ge_crater_detail", p.detail)
-    RunConsoleCommand("ge_crater_max", p.craterMax)
-    RunConsoleCommand("ge_fx_particle_amount", p.dust)
+    RunConsoleCommand("ge_volume_steps", tostring(p.steps))
+    RunConsoleCommand("ge_volume_max_instances", tostring(p.volumeMax))
+    RunConsoleCommand("ge_crater_detail", tostring(p.detail))
+    RunConsoleCommand("ge_crater_max", tostring(p.craterMax))
+    RunConsoleCommand("ge_fx_particle_amount", tostring(p.dust))
     print("[GE] Quality set to " .. name .. "; current smoke/fire color settings retained.")
 end
 
