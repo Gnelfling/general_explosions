@@ -40,10 +40,14 @@ def bake_frame(t):
             + .16 * np.sin(x * .78 - z * .67 + t * 1.8) * np.cos(y * .71 + z * .37)
             + .09 * np.sin(y * 1.13 + z * .93 - t * 2.8) * np.cos(x * 1.02 - z * .45))
     r = np.hypot(x, y)
-    cap = smooth((1 - np.hypot((r - radius * .55) / (radius * .57),
-                               (z - height) / (radius * .45)) + warp * .25) * 1.7)
+    radial = (r - radius * .49) / (radius * .63)
+    # Lift the outer rim while billows curl back toward the underside.
+    cap_center = height + radius * (.17 * smooth(r / radius) - .11)
+    vertical = (z - cap_center) / (radius * .49)
+    roll = np.sin(np.arctan2(vertical, radial) * 3 - t * 1.7 + warp) * .13
+    cap = smooth((1 - np.hypot(radial, vertical) + warp * .32 + roll) * 1.65)
     stem_width = (7 + radius * .32) * (1 - .45 * smooth(z / height))
-    stem = smooth((1 - r / stem_width + warp * .32) * 2) * smooth((height - z) / 16)
+    stem = smooth((1 - r / stem_width + warp * .39) * 2) * smooth((height + 5 - z) / 20)
     skirt = smooth((1 - np.hypot((r - radius * .34) / (radius * .46),
                                  (z - height * .48) / (radius * .14)) + warp * .21) * 2)
     dust = smooth((1 - np.hypot((r - extent * .63) / (extent * .30),
@@ -54,7 +58,9 @@ def bake_frame(t):
     smoke = np.maximum.reduce([cap * .41, stem * .32, skirt * .16]) * rise
     smoke = (smoke + dust * .20 * smooth(t / .8) * np.exp(-t * .19)
              + ball * .26 * (1 - rise)) * envelope
-    flame = (ball * 11 * np.exp(-t * 1.9) + cap**2 * 4 * rise * np.exp(-t * 1.5)) * envelope
+    hot_billows = .55 + .45 * smooth(warp + .2)
+    flame = (ball * 13 * np.exp(-t * 1.9)
+             + cap**2 * hot_billows * 8 * rise * np.exp(-t * .82)) * envelope
     return low, high, smoke, flame
 
 

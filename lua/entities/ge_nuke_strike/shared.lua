@@ -6,6 +6,7 @@ ENT.Spawnable = true
 ENT.AdminOnly = true
 ENT.RenderGroup = RENDERGROUP_TRANSLUCENT
 ENT.DescentTime = 5.2
+ENT.MaxDropHeight = 12000
 
 function ENT:SetupDataTables()
     self:NetworkVar("Float", 0, "StrikeStart")

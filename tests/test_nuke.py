@@ -22,6 +22,12 @@ class NukeTests(unittest.TestCase):
             local crater = GEFXServer.craters[1]
             assert(#GEFXServer.craters==1 and crater.nuke and crater.radius==650)
             assert(net.last=='ge_fx_nuke_impact_v1' and #sound.calls==1)
+            assert(sound.calls[1].path=='general_explosions/nuke/atomic_strike.wav')
+            file.Exists=function() return false end
+            local fallback = setmetatable({StrikeStart=100, DropHeight=12000,
+                GroundNormal=Vector(0,0,1)}, {__index=ENT})
+            fallback:Think(); fallback:Think()
+            assert(#sound.calls==3 and sound.calls[2].path=='ambient/explosions/explode_9.wav')
             NOW=109; strike:Think(); assert(strike.removed)
         ''')
 

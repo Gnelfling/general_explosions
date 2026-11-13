@@ -27,11 +27,21 @@ The effect is cinematic. Restart server and clients together for the updated
 crater snapshot format. Regenerate the condensation texture with
 `python tools/bake_condensation.py`.
 
-The expanding dome uses the existing ray marcher with a turbulent 3D shell and
-fades over roughly three seconds. It is composited before the mushroom cloud.
+The expanding dome uses two staggered turbulent 3D shells and fades over roughly
+three seconds. Both shells are composited before the mushroom cloud.
 Gaijin separately composites the front and rear dome halves and applies a
-ground dust decal. This version approximates those effects with a single dome
-pass, a ground shock ring and dust particles. [Gaijin's shockwave and dome reference](https://habr.com/ru/companies/gaijin/articles/557936/).
+ground dust decal. This version approximates those effects with expanding shells,
+two ground shock rings and dust particles. [Gaijin's shockwave and dome reference](https://habr.com/ru/companies/gaijin/articles/557936/).
+
+The strike starts up to 12,000 units above ground, limited by map geometry. The
+larger strobe grows during the dive. Impact adds a white-hot fireball, a brief
+screen exposure flash for nearby viewers with a clear line of sight, and a warm
+light tail. The cloud bake adds a rolling rim and longer-lived hot billows.
+
+The server uses `sound/general_explosions/nuke/atomic_strike.wav` when available.
+Use a mono 16-bit PCM WAV at 44.1 kHz. The installed War Thunder FMOD bank exposes
+an `atomic_strike` string, but the exact mixed cue was not verified or exported.
+Without the WAV, the strike layers two built-in Source explosions.
 
 - Real animated volumetric smoke and fire, generated from OpenVDB density/flames fields.
 - Looping preview and independent one-shot instances, each with its own position, scale and lifetime.

@@ -248,6 +248,11 @@ local function draw(instance)
         if t > 0 and t < 1 then
             local alpha = GERuntime.Smooth(t * 8) * (1 - GERuntime.Smooth((t - 0.24) / 0.76)) * 0.65
             drawVolume(instance, condensation, {0, 0, 0}, unitScale * (0.15 + 1.8 * t ^ 0.8), alpha)
+            local inner = t - 0.12
+            if inner > 0 then
+                local innerAlpha = GERuntime.Smooth(inner * 7) * (1 - GERuntime.Smooth(inner)) * 0.22
+                drawVolume(instance, condensation, {0, 0, 0}, unitScale * (0.15 + 1.55 * inner ^ 0.8), innerAlpha)
+            end
         end
     end
     drawVolume(instance, frame, manifest.anchor or {0, 0, 0}, unitScale)
