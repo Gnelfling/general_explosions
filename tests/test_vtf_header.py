@@ -47,6 +47,20 @@ class TestVTFHeader(unittest.TestCase):
 
 
 class TestSampling(unittest.TestCase):
+    def test_empty_frame_keeps_its_timing_without_fabricating_voxels(self):
+        class EmptyVDB:
+            def readAll(self, path):
+                return [], {}
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder)
+            result = converter.export_frame(EmptyVDB(), target/'frame.vdb', target, 199, 4)
+            self.assertEqual(result, {'frame': 199, 'empty': True})
+            self.assertEqual(list(target.iterdir()), [])
+            manifest = converter.lua_manifest([result], 24, (0, 0, 0), 0, 199)
+            self.assertIn('first_frame = 0', manifest)
+            self.assertIn('last_frame = 199', manifest)
+            self.assertIn('{frame=199, empty=true}', manifest)
+
     def test_trilinear_affine_field(self):
         original = sum(np.indices((4, 4, 4))).astype(np.float32)
         output = original

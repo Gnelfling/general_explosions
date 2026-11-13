@@ -4,6 +4,7 @@
 -- No gameplay mechanics, damage, or network messages are implemented.
 
 if not CLIENT then return end
+if not include("general_explosions/load_runtime.lua") then return end
 
 GEVolume = GEVolume or {}
 local GE = GEVolume
@@ -23,7 +24,15 @@ local smokeB = CreateClientConVar("ge_volume_smoke_b", "0.44", true, false, "Smo
 local maxInstances = CreateClientConVar("ge_volume_max_instances", "3", true, false, "Maximum simultaneous one-shot volumes", 1, 8)
 local drawDistance = CreateClientConVar("ge_volume_draw_distance", "16000", true, false, "Volume draw distance in Source units", 1000, 60000)
 
-local dataPath = "general_explosions/data/ground_explosion.lua"
+local manifests = {
+    ground = "general_explosions/data/ground_explosion.lua",
+    nuke = "general_explosions/data/nuke.lua"
+}
+local nukeManifest
+local condensation = {
+    texture = "general_explosions/nuke/condensation",
+    min = {-112, -112, 0}, max = {112, 112, 88}, density_scale = 0.33, flames_scale = 0
+}
 local VERTEX_SHADER = "shaders/fxc/ge_volume_vs30.vcs"
 local PIXEL_SHADER = "shaders/fxc/ge_volume_ps30.vcs"
 
@@ -33,22 +42,70 @@ GE.preview = GE.preview or nil
 GE.instances = GE.instances or {}
 GE.lastTexture = nil
 
-local function setup()
+local function setup(profile)
+    profile = profile or "ground"
+    local dataPath = manifests[profile]
+    if not dataPath then return false, "Unknown volume profile: " .. tostring(profile) end
+    local manifest
+    if profile == "nuke" then manifest = nukeManifest else manifest = GE.manifest end
     if not file.Exists(VERTEX_SHADER, "GAME") or not file.Exists(PIXEL_SHADER, "GAME") then
         return false, "Missing compiled .vcs shader(s) in shaders/fxc"
     end
     if not file.Exists("lua/" .. dataPath, "GAME") then
         return false, "Missing generated Lua manifest: " .. dataPath
     end
-    if not GE.manifest then
+    if not manifest then
         local ok, result = pcall(include, dataPath)
-        if not ok or not result or not result.frames or #result.frames == 0 then
+        if not ok or type(result) ~= "table" or type(result.frames) ~= "table" or #result.frames == 0 then
             return false, "Could not load non-empty volume manifest"
         end
-        GE.manifest = result
+        if not GERuntime.Finite(result.fps or 24) or (result.fps or 24) <= 0 then
+            return false, "Invalid manifest FPS"
+        end
+        result.fps = result.fps or 24
+        if result.anchor ~= nil then
+            if type(result.anchor) ~= "table" then return false, "Invalid volume anchor" end
+            for axis = 1, 3 do
+                if not GERuntime.Finite(result.anchor[axis]) then return false, "Invalid volume anchor" end
+            end
+        end
+        local previous = -1
+        for _, frame in ipairs(result.frames) do
+            if type(frame) ~= "table" or not GERuntime.Finite(frame.frame) or frame.frame <= previous
+                or frame.frame < 0 or frame.frame % 1 ~= 0 then
+                return false, "Manifest frames must be strictly ordered"
+            end
+            previous = frame.frame
+            if not frame.empty then
+                if type(frame.texture) ~= "string" or type(frame.min) ~= "table" or type(frame.max) ~= "table"
+                    or not GERuntime.Finite(frame.density_scale) or not GERuntime.Finite(frame.flames_scale)
+                    or frame.density_scale < 0 or frame.flames_scale < 0 then
+                    return false, "Invalid volume frame data"
+                end
+                for axis = 1, 3 do
+                    if not GERuntime.Finite(frame.min[axis]) or not GERuntime.Finite(frame.max[axis])
+                        or frame.max[axis] <= frame.min[axis] then return false, "Invalid volume bounds" end
+                end
+            end
+        end
+        local first = result.first_frame or result.frames[1].frame
+        local last = result.last_frame or previous
+        if not GERuntime.Finite(first) or not GERuntime.Finite(last) or first % 1 ~= 0 or last % 1 ~= 0
+            or first < 0 or first > result.frames[1].frame or last < previous then
+            return false, "Invalid manifest timeline"
+        end
+        manifest = result
+        if profile == "nuke" then nukeManifest = result else GE.manifest = result end
+        if profile == "ground" and last < 199 then
+            print("[GE] Volume manifest ends at frame " .. last .. "; shorter exports are supported. Preserve your full local 200-frame manifest/VTF/VMT set if available; Git cannot recover missing frames.")
+        end
     end
     if not GE.material then
-        local initial = GE.manifest.frames[1].texture
+        local initial
+        for _, frame in ipairs(manifest.frames) do
+            if not frame.empty then initial = frame.texture break end
+        end
+        if not initial then return false, "Manifest contains only empty frames" end
         GE.material = CreateMaterial("ge_volume_raymarch_v1", "screenspace_general", {
             ["$pixshader"] = "ge_volume_ps30",
             ["$vertexshader"] = "ge_volume_vs30",
@@ -70,7 +127,7 @@ local function setup()
             return false, "screenspace_general material is in error state"
         end
     end
-    return true
+    return true, nil, manifest
 end
 
 local cubeFaces = {
@@ -137,37 +194,11 @@ local function setFrame(frame)
     return true
 end
 
-local function selectFrame(elapsed, looping)
-    local frames = GE.manifest.frames
-    if #frames == 0 then return nil end
-    local fps = (GE.manifest.fps or 24) * playbackSpeed:GetFloat()
-    local startFrame, endFrame = frames[1].frame, frames[#frames].frame
-    local span = math.max(endFrame - startFrame + 1, 1)
-    local offset = math.floor(math.max(elapsed, 0) * fps)
-    if not looping and offset >= span then return nil end
-    local desired = startFrame + (looping and (offset % span) or offset)
-    local current = frames[1]
-    for i = 2, #frames do
-        if frames[i].frame > desired then break end
-        current = frames[i]
-    end
-    return current
-end
-
-local function draw(instance)
-    if not enabled:GetBool() or not instance then return false end
-    local ok = setup()
-    if not ok then return false end
-
-    local frame = selectFrame(CurTime() - instance.start, instance.loop == true)
-    if not frame then return false end
-    if not setFrame(frame) then return true end
-
-    local unitScale = scale:GetFloat() * instance.multiplier
+local function drawVolume(instance, frame, center, unitScale, domeAlpha)
+    if not setFrame(frame) then return end
     local mn, mx = frame.min, frame.max
     -- The animation uses one fixed VDB-space anchor, so the smoke doesn't
     -- snap back to its own bounding-box centre when it expands or rises.
-    local center = GE.manifest.anchor or {0, 0, 0}
     local eye = EyePos()
     local loc = (eye - instance.origin) / unitScale
     local camera = Vector(
@@ -187,31 +218,58 @@ local function draw(instance)
     m:SetFloat("$c1_x", 0.25)
     m:SetFloat("$c1_y", 0.35)
     m:SetFloat("$c1_z", 0.9)
-    m:SetFloat("$c1_w", steps:GetInt())
+    local raySteps = steps:GetInt()
+    if instance.profile == "nuke" then raySteps = math.max(raySteps, 64) end
+    m:SetFloat("$c1_w", raySteps)
     m:SetFloat("$c2_x", frame.density_scale)
     m:SetFloat("$c2_y", frame.flames_scale)
     m:SetFloat("$c2_z", fireGain:GetFloat())
-    m:SetFloat("$c2_w", ambient:GetFloat())
-    m:SetFloat("$c3_x", smokeR:GetFloat())
-    m:SetFloat("$c3_y", smokeG:GetFloat())
-    m:SetFloat("$c3_z", smokeB:GetFloat())
-    m:SetFloat("$c3_w", 1.0)
+    m:SetFloat("$c2_w", domeAlpha and 0.8 or ambient:GetFloat())
+    m:SetFloat("$c3_x", domeAlpha and 0.89 or smokeR:GetFloat())
+    m:SetFloat("$c3_y", domeAlpha and 0.94 or smokeG:GetFloat())
+    m:SetFloat("$c3_z", domeAlpha and 1 or smokeB:GetFloat())
+    m:SetFloat("$c3_w", domeAlpha or 1)
+    render.SetMaterial(m)
+    drawBox(frame, center, instance.origin, unitScale, camera, inside)
+end
 
-    if EyePos():DistToSqr(instance.origin) <= drawDistance:GetFloat() ^ 2 then
-        render.SetMaterial(m)
-        drawBox(frame, center, instance.origin, unitScale, camera, inside)
+local function draw(instance)
+    if not instance then return false end
+    local ok, _, manifest = setup(instance.profile)
+    if not ok then return false end
+    local age = (CurTime() - instance.start) * playbackSpeed:GetFloat()
+    local frame, alive = GERuntime.Frame(manifest, age, 1, instance.loop == true)
+    if not alive then return false end
+    if not enabled:GetBool() or not frame or EyePos():DistToSqr(instance.origin) > drawDistance:GetFloat() ^ 2 then return true end
+    local unitScale = scale:GetFloat() * instance.multiplier
+    if instance.profile == "nuke" then
+        local elapsed = instance.loop and age % (120 / manifest.fps) or age
+        local t = (elapsed - 0.16) / 2.8
+        if t > 0 and t < 1 then
+            local alpha = GERuntime.Smooth(t * 8) * (1 - GERuntime.Smooth((t - 0.24) / 0.76)) * 0.65
+            drawVolume(instance, condensation, {0, 0, 0}, unitScale * (0.15 + 1.8 * t ^ 0.8), alpha)
+            local inner = t - 0.12
+            if inner > 0 then
+                local innerAlpha = GERuntime.Smooth(inner * 7) * (1 - GERuntime.Smooth(inner)) * 0.22
+                drawVolume(instance, condensation, {0, 0, 0}, unitScale * (0.15 + 1.55 * inner ^ 0.8), innerAlpha)
+            end
+        end
     end
+    drawVolume(instance, frame, manifest.anchor or {0, 0, 0}, unitScale)
     return true
 end
 
-function GE.Spawn(origin, multiplier)
-    if not isvector(origin) then return false, "invalid world position" end
-    local ok, reason = setup()
+function GE.Spawn(origin, multiplier, startTime, profile)
+    if not GERuntime.Position(origin) then return false, "invalid world position" end
+    local ok, reason, manifest = setup(profile)
     if not ok then return false, reason end
+    startTime = GERuntime.Number(startTime, CurTime(), 0, CurTime() + 5)
+    local _, alive = GERuntime.Frame(manifest, CurTime() - startTime, playbackSpeed:GetFloat(), false)
+    if not alive then return false, "animation expired" end
     table.insert(GE.instances, {
         origin = Vector(origin.x, origin.y, origin.z),
-        start = CurTime(), multiplier = math.Clamp(tonumber(multiplier) or 1, 0.1, 20),
-        loop = false
+        start = startTime, multiplier = GERuntime.Number(multiplier, 1, 0.1, 20),
+        loop = false, profile = profile
     })
     while #GE.instances > maxInstances:GetInt() do table.remove(GE.instances, 1) end
     return true
@@ -221,11 +279,23 @@ function GE.ClearInstances()
     GE.instances = {}
 end
 
+hook.Add("PostCleanupMap", "GE.Volume.Cleanup", function()
+    GE.ClearInstances()
+    GE.preview = nil
+end)
+
 hook.Add("PostDrawTranslucentRenderables", "GE.Volume.Render", function(depth, sky)
     if sky or depth then return end
     draw(GE.preview)
+    local eye = EyePos()
+    local ordered = {}
+    for _, instance in ipairs(GE.instances) do ordered[#ordered + 1] = instance end
+    table.sort(ordered, function(a, b)
+        return eye:DistToSqr(a.origin) > eye:DistToSqr(b.origin)
+    end)
+    for _, instance in ipairs(ordered) do instance.alive = draw(instance) end
     for i = #GE.instances, 1, -1 do
-        if not draw(GE.instances[i]) then table.remove(GE.instances, i) end
+        if not GE.instances[i].alive then table.remove(GE.instances, i) end
     end
 end)
 
@@ -247,7 +317,7 @@ end, nil, "Preview animated VDB smoke in front of your camera")
 concommand.Add("ge_volume_spawn", function(_, _, args)
     local d = math.Clamp(tonumber(args[1]) or 1400, 100, 20000)
     local mult = math.Clamp(tonumber(args[2]) or 1, 0.1, 20)
-    local ok, reason = GE.Spawn(EyePos() + EyeAngles():Forward() * d, mult)
+    local ok, reason = GE.Spawn(EyePos() + EyeAngles():Forward() * d, mult, nil, args[3])
     print(ok and "[GE] One-shot volume spawned." or "[GE] " .. tostring(reason))
 end)
 
@@ -267,3 +337,40 @@ concommand.Add("ge_volume_status", function()
     if ok then print("[GE] Loaded frame records: " .. #GE.manifest.frames) end
     print("[GE] Active one-shot volumes: " .. #GE.instances)
 end)
+
+local function nukeGround(origin)
+    local trace = util.TraceLine({
+        start = origin + Vector(0, 0, 64),
+        endpos = origin - Vector(0, 0, 4096),
+        mask = MASK_SOLID_BRUSHONLY
+    })
+    if not trace.HitWorld or trace.HitSky or trace.StartSolid then return nil end
+    return trace.HitPos + Vector(0, 0, 2)
+end
+
+concommand.Add("ge_nuke_preview", function(_, _, args)
+    local ok, reason = setup("nuke")
+    if not ok then print("[GE] " .. tostring(reason)); return end
+    local distance = GERuntime.Number(args[1], 2700, 100, 20000)
+    local origin = nukeGround(EyePos() + EyeAngles():Forward() * distance)
+    if not origin then
+        print("[GE] No world ground beneath the preview position. Aim toward open ground.")
+        return
+    end
+    GE.preview = {
+        origin = origin,
+        start = CurTime(), multiplier = 1, loop = true, profile = "nuke"
+    }
+end, nil, "Preview the procedural nuclear mushroom cloud")
+
+concommand.Add("ge_nuke_spawn", function()
+    local ply = LocalPlayer()
+    if not IsValid(ply) then return end
+    local trace = ply:GetEyeTrace()
+    if not trace.HitWorld or trace.HitSky then
+        print("[GE] Aim at world ground to place the mushroom cloud.")
+        return
+    end
+    local ok, reason = GE.Spawn(trace.HitPos + Vector(0, 0, 2), 1, nil, "nuke")
+    if not ok then print("[GE] " .. tostring(reason)) end
+end, nil, "Place a visual-only nuclear mushroom cloud at the crosshair")

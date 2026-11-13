@@ -1,0 +1,5 @@
+"UnlitGeneric"
+{
+  "$basetexture" "general_explosions/nuke/frame_0090"
+  "$translucent" "1"
+}

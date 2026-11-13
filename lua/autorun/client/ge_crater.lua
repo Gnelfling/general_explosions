@@ -2,6 +2,7 @@
 -- This does not modify BSP geometry or physics. The apparent hole is created
 -- with stencil masking, a depth clear, and an independently drawn bowl mesh.
 if not CLIENT then return end
+if not include("general_explosions/load_runtime.lua") then return end
 
 GECraters = GECraters or {}
 local CR = GECraters
@@ -16,6 +17,7 @@ local maximum = CreateClientConVar("ge_crater_max", "12", true, false, "Maximum 
 local distance = CreateClientConVar("ge_crater_distance", "12000", true, false, "Crater draw distance (Source units)", 1000, 50000)
 local showRim = CreateClientConVar("ge_crater_rim", "1", true, false, "Draw raised crater rim", 0, 1)
 local showBlanket = CreateClientConVar("ge_crater_blanket", "1", true, false, "Draw scorched surroundings", 0, 1)
+local heatCV = CreateClientConVar("ge_crater_heat", "1", true, false, "Cooling impact fissures", 0, 1)
 local UP = Vector(0, 0, 1)
 local maskMaterial = CreateMaterial("ge_crater_stencil_v1", "UnlitGeneric", {
     ["$basetexture"] = "models/debug/debugwhite", ["$nocull"] = "1"
@@ -27,6 +29,10 @@ local soilMaterial = CreateMaterial("ge_crater_soil_v1", "UnlitGeneric", {
 local fadeMaterial = CreateMaterial("ge_crater_fade_v1", "UnlitGeneric", {
     ["$basetexture"] = "models/debug/debugwhite", ["$vertexcolor"] = "1",
     ["$vertexalpha"] = "1", ["$translucent"] = "1", ["$nocull"] = "1"
+})
+local heatMaterial = CreateMaterial("ge_crater_heat_v1", "UnlitGeneric", {
+    ["$basetexture"] = "models/debug/debugwhite", ["$vertexcolor"] = "1",
+    ["$vertexalpha"] = "1", ["$additive"] = "1", ["$nocull"] = "1"
 })
 
 local function clamp(v, low, high) return math.max(low, math.min(high, v)) end
@@ -67,19 +73,23 @@ local function sampleGround(x, y, baseZ)
 end
 
 local function vertex(q, mode, fade)
-    mesh.Position(mode == "mask" and q.mask or q.pos)
+    mesh.Position(mode == "mask" and q.mask or (mode == "heat" and q.pos + UP * 0.25 or q.pos))
     mesh.TexCoord(0, q.u, q.v)
     if mode == "mask" then
         mesh.Color(255, 255, 255, 255)
+    elseif mode == "heat" then
+        mesh.Color(255, 97, 25, q.heat)
     else
         mesh.Color(q.r, q.g, q.b, fade and q.a or 255)
     end
     mesh.AdvanceVertex()
 end
 
-local function surfaceMesh(rows, sides, jStart, jEnd, mode, fade)
+local function surfaceMesh(c, rows, sides, jStart, jEnd, mode, fade)
     local m = Mesh()
+    c.meshes[#c.meshes + 1] = m -- Own it before any mesh operation can fail.
     mesh.Begin(m, MATERIAL_TRIANGLES, sides * (jEnd - jStart) * 2)
+    c.building = true
     for i = 1, sides do
         local nextI = i % sides + 1
         for j = jStart, jEnd - 1 do
@@ -91,10 +101,12 @@ local function surfaceMesh(rows, sides, jStart, jEnd, mode, fade)
         end
     end
     mesh.End()
+    c.building = false
     return m
 end
 
 local function build(c)
+    c.meshes = {}
     local level = detail:GetInt()
     local sides = level == 0 and 28 or (level == 1 and 48 or 72)
     local inner = level == 0 and 6 or (level == 1 and 10 or 14)
@@ -116,6 +128,27 @@ local function build(c)
         stations[#stations + 1] = opening + (c.blanket / c.radius - opening) * t ^ 1.25
     end
 
+    -- A small shared terrain lattice replaces thousands of repeated traces.
+    -- Bilinear sampling keeps adjacent mesh sectors on the same surface.
+    local cells = level == 0 and 4 or (level == 1 and 6 or 8)
+    local extent = c.blanket * 1.15
+    local ground = {}
+    for iy = 0, cells do
+        ground[iy] = {}
+        for ix = 0, cells do
+            ground[iy][ix] = sampleGround(c.pos.x + (ix / cells * 2 - 1) * extent,
+                c.pos.y + (iy / cells * 2 - 1) * extent, c.pos.z)
+        end
+    end
+    local function terrain(wx, wy)
+        local x = clamp(((wx - c.pos.x) / extent + 1) * 0.5 * cells, 0, cells - 0.0001)
+        local y = clamp(((wy - c.pos.y) / extent + 1) * 0.5 * cells, 0, cells - 0.0001)
+        local ix, iy = math.floor(x), math.floor(y)
+        local fx, fy = x - ix, y - iy
+        local a = ground[iy][ix] * (1 - fx) + ground[iy][ix + 1] * fx
+        local b = ground[iy + 1][ix] * (1 - fx) + ground[iy + 1][ix + 1] * fx
+        return a * (1 - fy) + b * fy
+    end
     local rows = {}
     for i = 1, sides do
         local angle = (i - 1) / sides * math.pi * 2
@@ -125,7 +158,7 @@ local function build(c)
         for j, x in ipairs(stations) do
             local r = c.radius * radial * x
             local wx, wy = c.pos.x + dirX * r, c.pos.y + dirY * r
-            local gz = sampleGround(wx, wy, c.pos.z)
+            local gz = terrain(wx, wy)
             local irregular = (noise(c.seed + i * 31 + j * 179) - 0.5) * c.depth * 0.07
                 * smooth(x / 0.55) * (1 - smooth((x - 1.35) / 0.6))
             local height = profile(x, c.depth, c.rim) + irregular
@@ -135,6 +168,12 @@ local function build(c)
             local scorch = 1 - smooth((x - 0.35) / 1.85)
             local speckle = 0.82 + noise(c.seed + i * 47 + j * 59) * 0.33
             local shade = (0.50 + 0.50 * smooth(x / 1.95)) * speckle
+            -- Coherent radial fractures and exposed strata, rather than
+            -- independent per-triangle noise. Center vertices share a color.
+            local fissure = math.max(0, math.cos(angle * 13 + c.seed * 0.01 + x * 2.5)) ^ 18
+            local strata = 0.90 + 0.10 * math.sin(height * 0.21 + x * 19)
+            shade = shade * strata * (1 - fissure * 0.5 * smooth(x / 0.4))
+            if j == 1 then shade = 0.46 end
             local char = (0.38 + 0.62 * (1 - scorch))
             local base = c.glass and {45, 63, 52} or {114, 91, 71}
             local bright = (j == inner + 1 and 1.12 or 1)
@@ -145,17 +184,17 @@ local function build(c)
                 r = clamp(math.floor(base[1] * shade * char * bright), 0, 255),
                 g = clamp(math.floor(base[2] * shade * char * bright), 0, 255),
                 b = clamp(math.floor(base[3] * shade * char * bright), 0, 255),
-                a = clamp(math.floor(a), 0, 255)
+                a = clamp(math.floor(a), 0, 255),
+                heat = clamp(math.floor(255 * fissure * smooth(x / 0.35)
+                    * (1 - smooth((x - 0.72) / 0.5))), 0, 255)
             }
         end
         rows[i] = row
     end
 
-    c.meshes = {}
     local function add(key, startJ, endJ, mode, fade)
         if endJ <= startJ then return end
-        local m = surfaceMesh(rows, sides, startJ, endJ, mode, fade)
-        c.meshes[#c.meshes + 1] = m
+        local m = surfaceMesh(c, rows, sides, startJ, endJ, mode, fade)
         c[key] = m
     end
     if not flat then
@@ -164,8 +203,11 @@ local function build(c)
     end
     local split = inner + 1
     while split < #stations and stations[split] < 1.65 do split = split + 1 end
-    add("rimMesh", inner + 1, split, "soil", false)
-    add("blanketMesh", split, #stations, "soil", true)
+    if not flat then
+        add("rimMesh", inner + 1, split, "soil", false)
+        add("blanketMesh", split, #stations, "soil", true)
+        add("heatMesh", 1, split, "heat", true)
+    end
     if flat then
         -- A scorch-only mark should not clear the underlying world's depth.
         add("flatMesh", 1, #stations, "soil", true)
@@ -186,17 +228,20 @@ end
 
 function CR.Add(pos, radius, depth, opts)
     opts = opts or {}
-    if not isvector(pos) then return false, "invalid position" end
-    radius = clamp(tonumber(radius) or 240, 30, 2000)
-    depth = clamp(tonumber(depth) or radius * 0.24, 0, radius * 0.70)
+    if not GERuntime.Position(pos) then return false, "invalid position" end
+    radius = GERuntime.Number(radius, 240, 30, 2000)
+    depth = GERuntime.Number(depth, radius * 0.24, 0, radius * 0.70)
     local c = {
         pos = Vector(pos.x, pos.y, pos.z), radius = radius,
-        depth = depth, rim = clamp(tonumber(opts.rim) or radius * 0.11, 0, radius * 0.30),
-        blanket = clamp(tonumber(opts.blanket) or radius * 2.7, radius * 1.9, radius * 4),
-        glass = opts.glass == true, seed = math.floor(tonumber(opts.seed) or math.random(1, 999999))
+        depth = depth, rim = GERuntime.Number(opts.rim, radius * 0.11, 0, radius * 0.30),
+        blanket = GERuntime.Number(opts.blanket, radius * 2.7, radius * 1.9, radius * 4),
+        glass = opts.glass == true,
+        seed = math.floor(GERuntime.Number(opts.seed, math.random(1, 999999), 1, 16777214)),
+        created = GERuntime.Number(opts.time, CurTime(), 0, CurTime())
     }
     local ok, err = pcall(build, c)
     if not ok then
+        if c.building then pcall(mesh.End) end
         CR.Free(c)
         return false, tostring(err)
     end
@@ -225,11 +270,13 @@ local function drawOne(c)
     render.SetStencilFailOperation(STENCILOPERATION_KEEP)
     render.SetStencilZFailOperation(STENCILOPERATION_KEEP)
     render.OverrideColorWriteEnable(true, false)
+    render.OverrideAlphaWriteEnable(true, false)
     render.OverrideDepthEnable(true, false)
     render.SetMaterial(maskMaterial)
     c.opening:Draw()
     render.OverrideDepthEnable(false, false)
     render.OverrideColorWriteEnable(false, false)
+    render.OverrideAlphaWriteEnable(false, false)
     render.SetStencilCompareFunction(STENCILCOMPARISONFUNCTION_EQUAL)
     render.SetStencilPassOperation(STENCILOPERATION_KEEP)
     render.ClearBuffersObeyStencil(24, 19, 16, 255, true)
@@ -245,6 +292,13 @@ local function drawOne(c)
         render.SetMaterial(fadeMaterial)
         c.blanketMesh:Draw()
     end
+    local heat = 1 - smooth((CurTime() - c.created) / 6)
+    if heatCV:GetBool() and heat > 0 and c.heatMesh then
+        render.SetBlend(heat * heat * 0.85)
+        render.SetMaterial(heatMaterial)
+        c.heatMesh:Draw()
+        render.SetBlend(1)
+    end
 end
 
 hook.Add("PostDrawOpaqueRenderables", "GE.Crater.Render", function(depthPass, sky)
@@ -252,13 +306,16 @@ hook.Add("PostDrawOpaqueRenderables", "GE.Crater.Render", function(depthPass, sk
     local eye, limit = EyePos(), distance:GetFloat()
     for _, c in ipairs(CR.list) do
         local bound = limit + c.blanket
-        if eye:DistToSqr(c.pos) < bound * bound then
+        if not c.failed and eye:DistToSqr(c.pos) < bound * bound then
             local ok, err = xpcall(function() drawOne(c) end, debug.traceback)
             -- Restore engine state even when another addon or a mesh fails.
             render.OverrideDepthEnable(false, false)
             render.OverrideColorWriteEnable(false, false)
+            render.OverrideAlphaWriteEnable(false, false)
             render.SetStencilEnable(false)
+            render.SetBlend(1)
             if not ok then
+                c.failed = true
                 ErrorNoHalt("[GE] Crater render failed: " .. tostring(err) .. "\n")
                 break
             end
@@ -267,6 +324,7 @@ hook.Add("PostDrawOpaqueRenderables", "GE.Crater.Render", function(depthPass, sk
 end)
 
 hook.Add("PostCleanupMap", "GE.Crater.Cleanup", CR.Clear)
+hook.Add("ShutDown", "GE.Crater.Shutdown", CR.Clear)
 
 concommand.Add("ge_crater_test", function(_, _, args)
     local ply = LocalPlayer()

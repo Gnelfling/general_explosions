@@ -18,6 +18,8 @@ local function apply(name)
     RunConsoleCommand("ge_crater_detail", tostring(p.detail))
     RunConsoleCommand("ge_crater_max", tostring(p.craterMax))
     RunConsoleCommand("ge_fx_particle_amount", tostring(p.dust))
+    RunConsoleCommand("ge_railgun_quality", tostring(p.detail))
+    RunConsoleCommand("ge_railgun_light_budget", p.detail == 0 and "1" or "2")
     print("[GE] Quality set to " .. name .. "; current smoke/fire color settings retained.")
 end
 
