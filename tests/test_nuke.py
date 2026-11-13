@@ -18,11 +18,16 @@ class NukeTests(unittest.TestCase):
             with vtf.open('rb') as stream:
                 header = stream.read(80)
             self.assertEqual(header[:4], b'VTF\0')
+            self.assertEqual(struct.unpack_from('<HH', header, 16), (128, 128))
             self.assertEqual(struct.unpack_from('<H', header, 63)[0], 64)
-            self.assertEqual(vtf.stat().st_size, 80 + 64**3 * 4)
+            self.assertEqual(frame.min[3], 0)
+            self.assertEqual(vtf.stat().st_size, 80 + 128**2 * 64 * 4)
 
         include('autorun/client/ge_volume.lua')
         lua.execute('''
+            concommand.callbacks.ge_nuke_preview(nil, nil, {})
+            assert(GEVolume.preview.profile == 'nuke' and GEVolume.preview.origin.z == 2)
+            GEVolume.preview = nil
             assert(GEVolume.Spawn(Vector(), 1, 99, "nuke"))
             assert(GEVolume.Spawn(Vector(80, 0, 0), 1, 99))
             assert(not GEVolume.Spawn(Vector(), 1, 99, "unknown"))

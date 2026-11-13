@@ -227,7 +227,9 @@ local function draw(instance)
     m:SetFloat("$c1_x", 0.25)
     m:SetFloat("$c1_y", 0.35)
     m:SetFloat("$c1_z", 0.9)
-    m:SetFloat("$c1_w", steps:GetInt())
+    local raySteps = steps:GetInt()
+    if instance.profile == "nuke" then raySteps = math.max(raySteps, 64) end
+    m:SetFloat("$c1_w", raySteps)
     m:SetFloat("$c2_x", frame.density_scale)
     m:SetFloat("$c2_y", frame.flames_scale)
     m:SetFloat("$c2_z", fireGain:GetFloat())
@@ -323,12 +325,27 @@ concommand.Add("ge_volume_status", function()
     print("[GE] Active one-shot volumes: " .. #GE.instances)
 end)
 
+local function nukeGround(origin)
+    local trace = util.TraceLine({
+        start = origin + Vector(0, 0, 64),
+        endpos = origin - Vector(0, 0, 4096),
+        mask = MASK_SOLID_BRUSHONLY
+    })
+    if not trace.HitWorld or trace.HitSky or trace.StartSolid then return nil end
+    return trace.HitPos + Vector(0, 0, 2)
+end
+
 concommand.Add("ge_nuke_preview", function(_, _, args)
     local ok, reason = setup("nuke")
     if not ok then print("[GE] " .. tostring(reason)); return end
     local distance = GERuntime.Number(args[1], 2700, 100, 20000)
+    local origin = nukeGround(EyePos() + EyeAngles():Forward() * distance)
+    if not origin then
+        print("[GE] No world ground beneath the preview position. Aim toward open ground.")
+        return
+    end
     GE.preview = {
-        origin = EyePos() + EyeAngles():Forward() * distance,
+        origin = origin,
         start = CurTime(), multiplier = 1, loop = true, profile = "nuke"
     }
 end, nil, "Preview the procedural nuclear mushroom cloud")
@@ -341,6 +358,6 @@ concommand.Add("ge_nuke_spawn", function()
         print("[GE] Aim at world ground to place the mushroom cloud.")
         return
     end
-    local ok, reason = GE.Spawn(trace.HitPos, 1, nil, "nuke")
+    local ok, reason = GE.Spawn(trace.HitPos + Vector(0, 0, 2), 1, nil, "nuke")
     if not ok then print("[GE] " .. tostring(reason)) end
 end, nil, "Place a visual-only nuclear mushroom cloud at the crosshair")

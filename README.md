@@ -10,7 +10,9 @@ The branch download includes a second volumetric explosion inspired by War Thund
 Use `ge_nuke_spawn` while aiming at world ground, or `ge_nuke_preview` to loop it
 in front of the camera. The **General Explosions** utilities panel has both actions.
 The cloud is an original bake using the existing renderer and runs locally as a
-visual effect. Its 120 included 64³ VTF frames play at 12 FPS for ten seconds.
+visual effect. Its 120 included 128 × 128 × 64 VTF frames play at 12 FPS for ten seconds.
+The preview traces downward to place the cloud on world ground. The nuke uses
+at least 64 ray steps to retain the finer smoke detail.
 It models a fireball, rising stem, rolling cap, skirt, and spreading ground dust.
 The original effect still uses its own `ground_explosion.lua` and textures.
 Regenerate the nuclear frames with `python tools/bake_nuke.py` and NumPy.

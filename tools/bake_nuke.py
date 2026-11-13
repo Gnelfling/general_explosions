@@ -8,7 +8,8 @@ from vdb_to_vtf import lua_manifest, quantize, write_volume_vtf
 
 FPS = 12
 FRAMES = 120
-SIZE = 64
+WIDTH = 128
+DEPTH = 64
 PREFIX = 'general_explosions/nuke'
 
 
@@ -22,17 +23,22 @@ def bake_frame(t):
     growth = 1 - np.exp(-t * 0.42)
     radius = 14 + 57 * growth
     height = 9 + 117 * growth
-    extent = int(np.ceil(34 + 111 * growth))
-    top = int(np.ceil(height + radius * 0.62 + 12))
-    low = [-extent, -extent, -4]
+    extent = int(np.ceil(48 + 111 * growth))
+    ball_size = 9 + 35 * (1 - np.exp(-t * 3))
+    top = int(np.ceil(max(height + radius * 0.75, ball_size * 1.65) + 8))
+    low = [-extent, -extent, 0]
     high = [extent, extent, top]
-    z, y, x = np.meshgrid(*(np.linspace(low[i], high[i], SIZE, dtype=np.float32)
-                           for i in (2, 1, 0)), indexing='ij', sparse=True)
+    z, y, x = np.meshgrid(*(np.linspace(low[i], high[i], size, dtype=np.float32)
+                           for i, size in ((2, DEPTH), (1, WIDTH), (0, WIDTH))),
+                         indexing='ij', sparse=True)
+    edge = smooth((extent - np.maximum(np.abs(x), np.abs(y))) / 12)
     # Wind shear and coherent eddies move with the cloud over successive frames.
     x = x - t * 1.2 * smooth(z / height)
     warp = (np.sin(x * .12 + z * .14 - t * 1.4) * np.cos(y * .15 - z * .07)
             + .45 * np.sin(y * .28 + z * .21 + t) * np.cos(x * .24 - z * .12)
-            + .2 * np.sin(x * .49 + y * .36 - z * .4))
+            + .24 * np.sin(x * .49 + y * .36 - z * .4 - t * 2.1)
+            + .16 * np.sin(x * .78 - z * .67 + t * 1.8) * np.cos(y * .71 + z * .37)
+            + .09 * np.sin(y * 1.13 + z * .93 - t * 2.8) * np.cos(x * 1.02 - z * .45))
     r = np.hypot(x, y)
     cap = smooth((1 - np.hypot((r - radius * .55) / (radius * .57),
                                (z - height) / (radius * .45)) + warp * .25) * 1.7)
@@ -42,10 +48,9 @@ def bake_frame(t):
                                  (z - height * .48) / (radius * .14)) + warp * .21) * 2)
     dust = smooth((1 - np.hypot((r - extent * .63) / (extent * .30),
                                 (z - 4) / (6 + radius * .12)) + warp * .26) * 2)
-    ball_size = 9 + 35 * (1 - np.exp(-t * 3))
     ball = smooth((1 - np.hypot(r, (z - ball_size * .66) * 1.1) / ball_size + warp * .12) * 1.8)
     rise = smooth(t / 1.65)
-    envelope = smooth((z + 1) / 6) * (1 - smooth((t - 6) / 4))
+    envelope = smooth(z / 5) * smooth((top - z) / 8) * edge * (1 - smooth((t - 6) / 4))
     smoke = np.maximum.reduce([cap * .41, stem * .32, skirt * .16]) * rise
     smoke = (smoke + dust * .20 * smooth(t / .8) * np.exp(-t * .19)
              + ball * .26 * (1 - rise)) * envelope
@@ -59,7 +64,7 @@ def main():
     frames = []
     for index in range(FRAMES):
         low, high, density, flame = bake_frame((index + 0.5) / FPS)
-        voxels = np.zeros((SIZE, SIZE, SIZE, 4), dtype=np.uint8)
+        voxels = np.zeros((DEPTH, WIDTH, WIDTH, 4), dtype=np.uint8)
         voxels[..., 0], density_scale = quantize(density)
         voxels[..., 1], flames_scale = quantize(flame)
         voxels[..., 3] = 255
