@@ -6,6 +6,16 @@ An original visual-effects-only addon using a real 200-frame GroundExplosionVDB 
 
 ## Features
 
+The branch download includes a second volumetric explosion inspired by War Thunder.
+Use `ge_nuke_spawn` while aiming at world ground, or `ge_nuke_preview` to loop it
+in front of the camera. The **General Explosions** utilities panel has both actions.
+The cloud is an original bake using the existing renderer and runs locally as a
+visual effect. Its 120 included 64³ VTF frames play at 12 FPS for ten seconds.
+It models a fireball, rising stem, rolling cap, skirt, and spreading ground dust.
+The original effect still uses its own `ground_explosion.lua` and textures.
+Regenerate the nuclear frames with `python tools/bake_nuke.py` and NumPy.
+The rendering reference is [Gaijin's nuclear cloud breakdown](https://habr.com/ru/companies/gaijin/articles/557872/).
+
 - Real animated volumetric smoke and fire, generated from OpenVDB density/flames fields.
 - Looping preview and independent one-shot instances, each with its own position, scale and lifetime.
 - Playback speed, opacity, fire gain, smoke tint, size, ambient and GPU step count controls.

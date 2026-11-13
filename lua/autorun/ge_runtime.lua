@@ -4,6 +4,7 @@ if SERVER then
     AddCSLuaFile("general_explosions/load_runtime.lua")
     -- Autorun files auto-distribute; included generated data does not.
     AddCSLuaFile("general_explosions/data/ground_explosion.lua")
+    AddCSLuaFile("general_explosions/data/nuke.lua")
     if file.Exists("lua/general_explosions/data/vac_impact.lua", "GAME") then
         AddCSLuaFile("general_explosions/data/vac_impact.lua")
     end
