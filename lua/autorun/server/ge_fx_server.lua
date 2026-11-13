@@ -4,7 +4,8 @@ if CLIENT then return end
 if not include("general_explosions/load_runtime.lua") then return end
 
 util.AddNetworkString("ge_fx_visual_impact_v2")
-util.AddNetworkString("ge_fx_crater_snapshot_v2")
+util.AddNetworkString("ge_fx_crater_snapshot_v3")
+util.AddNetworkString("ge_fx_nuke_impact_v1")
 util.AddNetworkString("ge_fx_clear_v2")
 util.AddNetworkString("ge_fx_ready_v2")
 
@@ -29,9 +30,12 @@ end
 
 function FX.SendSnapshot(ply)
     if not IsValid(ply) then return end
-    net.Start("ge_fx_crater_snapshot_v2")
+    net.Start("ge_fx_crater_snapshot_v3")
     net.WriteUInt(#FX.craters, 6)
-    for _, c in ipairs(FX.craters) do sendRecord(c) end
+    for _, c in ipairs(FX.craters) do
+        sendRecord(c)
+        net.WriteBool(c.nuke == true)
+    end
     net.Send(ply)
 end
 
@@ -45,14 +49,14 @@ function FX.Impact(pos, radius, depth, opts)
     if not GERuntime.Position(normal) or normal:LengthSqr() < 0.5 then normal = Vector(0, 0, 1) end
     local c = {
         id = FX.serial, time = GERuntime.Number(opts.time, CurTime(), CurTime() - 30, CurTime()),
-        normal = normal:GetNormalized(),
+        normal = normal:GetNormalized(), nuke = opts.nuke == true,
         pos = Vector(pos.x, pos.y, pos.z), radius = radius, depth = depth,
         seed = math.floor(GERuntime.Number(opts.seed, math.random(1, 16777214), 1, 16777214)), glass = opts.glass == true
     }
     table.insert(FX.craters, c)
     while #FX.craters > maxCraterHistory:GetInt() do table.remove(FX.craters, 1) end
 
-    net.Start("ge_fx_visual_impact_v2")
+    net.Start(c.nuke and "ge_fx_nuke_impact_v1" or "ge_fx_visual_impact_v2")
     sendRecord(c)
     net.Broadcast()
     return true

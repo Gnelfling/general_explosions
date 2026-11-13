@@ -29,6 +29,10 @@ local manifests = {
     nuke = "general_explosions/data/nuke.lua"
 }
 local nukeManifest
+local condensation = {
+    texture = "general_explosions/nuke/condensation",
+    min = {-112, -112, 0}, max = {112, 112, 88}, density_scale = 0.33, flames_scale = 0
+}
 local VERTEX_SHADER = "shaders/fxc/ge_volume_vs30.vcs"
 local PIXEL_SHADER = "shaders/fxc/ge_volume_ps30.vcs"
 
@@ -190,24 +194,11 @@ local function setFrame(frame)
     return true
 end
 
-local function draw(instance)
-    if not instance then return false end
-    local ok, _, manifest = setup(instance.profile)
-    if not ok then return false end
-
-    local frame, alive = GERuntime.Frame(manifest, CurTime() - instance.start,
-        playbackSpeed:GetFloat(), instance.loop == true)
-    if not alive then return false end
-    if not enabled:GetBool() or not frame then return true end
-    -- Cull before touching frame materials; distant sequences still age.
-    if EyePos():DistToSqr(instance.origin) > drawDistance:GetFloat() ^ 2 then return true end
-    if not setFrame(frame) then return true end
-
-    local unitScale = scale:GetFloat() * instance.multiplier
+local function drawVolume(instance, frame, center, unitScale, domeAlpha)
+    if not setFrame(frame) then return end
     local mn, mx = frame.min, frame.max
     -- The animation uses one fixed VDB-space anchor, so the smoke doesn't
     -- snap back to its own bounding-box centre when it expands or rises.
-    local center = manifest.anchor or {0, 0, 0}
     local eye = EyePos()
     local loc = (eye - instance.origin) / unitScale
     local camera = Vector(
@@ -233,16 +224,33 @@ local function draw(instance)
     m:SetFloat("$c2_x", frame.density_scale)
     m:SetFloat("$c2_y", frame.flames_scale)
     m:SetFloat("$c2_z", fireGain:GetFloat())
-    m:SetFloat("$c2_w", ambient:GetFloat())
-    m:SetFloat("$c3_x", smokeR:GetFloat())
-    m:SetFloat("$c3_y", smokeG:GetFloat())
-    m:SetFloat("$c3_z", smokeB:GetFloat())
-    m:SetFloat("$c3_w", 1.0)
+    m:SetFloat("$c2_w", domeAlpha and 0.8 or ambient:GetFloat())
+    m:SetFloat("$c3_x", domeAlpha and 0.89 or smokeR:GetFloat())
+    m:SetFloat("$c3_y", domeAlpha and 0.94 or smokeG:GetFloat())
+    m:SetFloat("$c3_z", domeAlpha and 1 or smokeB:GetFloat())
+    m:SetFloat("$c3_w", domeAlpha or 1)
+    render.SetMaterial(m)
+    drawBox(frame, center, instance.origin, unitScale, camera, inside)
+end
 
-    if EyePos():DistToSqr(instance.origin) <= drawDistance:GetFloat() ^ 2 then
-        render.SetMaterial(m)
-        drawBox(frame, center, instance.origin, unitScale, camera, inside)
+local function draw(instance)
+    if not instance then return false end
+    local ok, _, manifest = setup(instance.profile)
+    if not ok then return false end
+    local age = (CurTime() - instance.start) * playbackSpeed:GetFloat()
+    local frame, alive = GERuntime.Frame(manifest, age, 1, instance.loop == true)
+    if not alive then return false end
+    if not enabled:GetBool() or not frame or EyePos():DistToSqr(instance.origin) > drawDistance:GetFloat() ^ 2 then return true end
+    local unitScale = scale:GetFloat() * instance.multiplier
+    if instance.profile == "nuke" then
+        local elapsed = instance.loop and age % (120 / manifest.fps) or age
+        local t = (elapsed - 0.16) / 2.8
+        if t > 0 and t < 1 then
+            local alpha = GERuntime.Smooth(t * 8) * (1 - GERuntime.Smooth((t - 0.24) / 0.76)) * 0.65
+            drawVolume(instance, condensation, {0, 0, 0}, unitScale * (0.15 + 1.8 * t ^ 0.8), alpha)
+        end
     end
+    drawVolume(instance, frame, manifest.anchor or {0, 0, 0}, unitScale)
     return true
 end
 

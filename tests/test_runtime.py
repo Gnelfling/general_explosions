@@ -310,7 +310,7 @@ class ClientBehaviorTests(unittest.TestCase):
             impact(); impact()
             assert(volumes==1 and bursts==1)
             hook.callbacks['Think:GE.FX.BuildCraters'](); assert(craters==1)
-            ui,fi=0,0; net.callbacks.ge_fx_crater_snapshot_v2()
+            ui,fi=0,0; net.callbacks.ge_fx_crater_snapshot_v3()
             hook.callbacks['Think:GE.FX.BuildCraters']()
             assert(craters==2 and volumes==1 and bursts==1)
             NOW=101; uints[1]=9; impact(); assert(volumes==2 and bursts==1)

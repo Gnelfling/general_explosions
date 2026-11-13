@@ -18,6 +18,21 @@ The original effect still uses its own `ground_explosion.lua` and textures.
 Regenerate the nuclear frames with `python tools/bake_nuke.py` and NumPy.
 The rendering reference is [Gaijin's nuclear cloud breakdown](https://habr.com/ru/companies/gaijin/articles/557872/).
 
+Spawn **Nuclear Strike** from **Entities → General Explosions**, or aim at open
+world ground and run `gm_spawnsent ge_nuke_strike` as an admin. A sky flare
+pulses twice per second and accelerates into a 5.2-second descent. Impact creates
+a flash, expanding condensation volume, ground shock ring, dust, mushroom cloud,
+and a visual crater. Set `ge_nuke_flash 0` to hide the flashes and impact light.
+The effect is cinematic. Restart server and clients together for the updated
+crater snapshot format. Regenerate the condensation texture with
+`python tools/bake_condensation.py`.
+
+The expanding dome uses the existing ray marcher with a turbulent 3D shell and
+fades over roughly three seconds. It is composited before the mushroom cloud.
+Gaijin separately composites the front and rear dome halves and applies a
+ground dust decal. This version approximates those effects with a single dome
+pass, a ground shock ring and dust particles. [Gaijin's shockwave and dome reference](https://habr.com/ru/companies/gaijin/articles/557936/).
+
 - Real animated volumetric smoke and fire, generated from OpenVDB density/flames fields.
 - Looping preview and independent one-shot instances, each with its own position, scale and lifetime.
 - Playback speed, opacity, fire gain, smoke tint, size, ambient and GPU step count controls.

@@ -6,11 +6,33 @@ from test_runtime import client_runtime
 
 
 class NukeTests(unittest.TestCase):
+    def test_strike_impact_runs_once_and_sends_nuke_profile(self):
+        from test_runtime import runtime
+
+        lua, include = runtime()
+        lua.globals().include = lambda name: include('entities/ge_nuke_strike/shared.lua' if name == 'shared.lua' else name)
+        include('autorun/server/ge_fx_server.lua')
+        include('entities/ge_nuke_strike/init.lua')
+        lua.execute('''
+            ENT:SetupDataTables()
+            local strike = setmetatable({StrikeStart=100, DropHeight=6400,
+                GroundNormal=Vector(0,0,1)}, {__index=ENT})
+            NOW=105; strike:Think(); assert(#GEFXServer.craters==0)
+            NOW=105.2; strike:Think(); strike:Think()
+            local crater = GEFXServer.craters[1]
+            assert(#GEFXServer.craters==1 and crater.nuke and crater.radius==650)
+            assert(net.last=='ge_fx_nuke_impact_v1' and #sound.calls==1)
+            NOW=109; strike:Think(); assert(strike.removed)
+        ''')
+
     def test_shipped_frames_and_independent_playback(self):
         lua, include = client_runtime()
         manifest = include('general_explosions/data/nuke.lua')
         self.assertEqual(len(manifest.frames), 120)
         root = Path(__file__).resolve().parents[1]
+        dome = root / 'materials/general_explosions/nuke/condensation.vtf'
+        self.assertEqual(dome.stat().st_size, 80 + 64**3 * 4)
+        self.assertTrue(dome.with_suffix('.vmt').is_file())
         for frame in manifest.frames.values():
             texture = root / 'materials' / frame.texture
             self.assertTrue(texture.with_suffix('.vmt').is_file())

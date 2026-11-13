@@ -28,7 +28,8 @@ local function transient(c)
         GEImpactFX.Burst(c.pos + c.normal * 4, c.radius / 260, c.seed, c.normal)
     end
     if GEVolume then
-        local ok, reason = GEVolume.Spawn(c.pos + Vector(0, 0, 4), c.radius / 260, c.time)
+        local multiplier = c.nuke and c.radius / 650 or c.radius / 260
+        local ok, reason = GEVolume.Spawn(c.pos + Vector(0, 0, 4), multiplier, c.time, c.nuke and "nuke" or nil)
         if not ok and reason ~= "animation expired" then report("Volume", reason) end
     end
 end
@@ -75,11 +76,20 @@ hook.Add("Think", "GE.FX.BuildCraters", function()
 end)
 
 net.Receive("ge_fx_visual_impact_v2", function() receive(readRecord(), false) end)
-net.Receive("ge_fx_crater_snapshot_v2", function()
+net.Receive("ge_fx_nuke_impact_v1", function()
+    local c = readRecord()
+    c.nuke = true
+    receive(c, false)
+end)
+net.Receive("ge_fx_crater_snapshot_v3", function()
     local count = net.ReadUInt(6)
     queue = {}
     if GECraters then GECraters.Clear() end
-    for _ = 1, count do receive(readRecord(), true) end
+    for _ = 1, count do
+        local c = readRecord()
+        c.nuke = net.ReadBool()
+        receive(c, true)
+    end
 end)
 
 function FX.Clear()
